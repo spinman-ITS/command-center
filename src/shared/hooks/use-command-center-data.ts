@@ -12,12 +12,12 @@ import {
 import { useQuery } from "@tanstack/react-query";
 
 export function useAgentsQuery() {
-  useRealtimeInvalidation([{ table: "agents", queryKey: "agents" }]);
+  useRealtimeInvalidation([{ table: "agent_team", queryKey: "agents" }]);
   return useQuery({ queryKey: ["agents"], queryFn: getAgents });
 }
 
 export function useProjectsQuery() {
-  useRealtimeInvalidation([{ table: "projects", queryKey: "projects" }]);
+  useRealtimeInvalidation([{ table: "tasks", queryKey: "projects" }]);
   return useQuery({ queryKey: ["projects"], queryFn: getProjects });
 }
 
@@ -27,12 +27,12 @@ export function useTasksQuery() {
 }
 
 export function useActivityQuery() {
-  useRealtimeInvalidation([{ table: "activity", queryKey: "activity" }]);
+  useRealtimeInvalidation([{ table: "agent_activity", queryKey: "activity" }]);
   return useQuery({ queryKey: ["activity"], queryFn: getActivity });
 }
 
 export function useDocsQuery() {
-  useRealtimeInvalidation([{ table: "docs", queryKey: "docs" }]);
+  useRealtimeInvalidation([{ table: "documents", queryKey: "docs" }]);
   return useQuery({ queryKey: ["docs"], queryFn: getDocs });
 }
 

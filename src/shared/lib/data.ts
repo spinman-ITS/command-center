@@ -34,7 +34,7 @@ async function selectOrFallback<T extends object>(table: string, fallback: T[], 
 }
 
 export function getAgents() {
-  return selectOrFallback<Agent>("agents", mockAgents, "last_seen_at");
+  return selectOrFallback<Agent>("agent_team", mockAgents);
 }
 
 export function getProjects() {
@@ -46,11 +46,11 @@ export function getTasks() {
 }
 
 export function getActivity() {
-  return selectOrFallback<ActivityItem>("activity", mockActivity, "created_at");
+  return selectOrFallback<ActivityItem>("agent_activity", mockActivity, "created_at");
 }
 
 export function getDocs() {
-  return selectOrFallback<DocumentRecord>("docs", mockDocs, "updated_at");
+  return selectOrFallback<DocumentRecord>("documents", mockDocs, "updated_at");
 }
 
 export function getIntegrations() {
