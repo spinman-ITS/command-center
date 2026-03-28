@@ -1,0 +1,25 @@
+import { ActivityPage } from "@/features/activity/activity-page";
+import { DashboardPage } from "@/features/dashboard/dashboard-page";
+import { DocsPage } from "@/features/docs/docs-page";
+import { ProjectsBoardPage } from "@/features/projects/projects-board-page";
+import { ProjectsListPage } from "@/features/projects/projects-list-page";
+import { SettingsPage } from "@/features/settings/settings-page";
+import { TeamPage } from "@/features/team/team-page";
+import { AppLayout } from "@/shared/components/app-layout";
+import { createBrowserRouter } from "react-router-dom";
+
+export const router = createBrowserRouter([
+  {
+    path: "/",
+    element: <AppLayout />,
+    children: [
+      { index: true, element: <DashboardPage /> },
+      { path: "projects", element: <ProjectsListPage /> },
+      { path: "projects/:name", element: <ProjectsBoardPage /> },
+      { path: "team", element: <TeamPage /> },
+      { path: "docs", element: <DocsPage /> },
+      { path: "activity", element: <ActivityPage /> },
+      { path: "settings", element: <SettingsPage /> },
+    ],
+  },
+]);

@@ -1,0 +1,144 @@
+import { useCronJobsQuery, useIntegrationsQuery, useSystemInfoQuery } from "@/shared/hooks/use-command-center-data";
+import { ErrorState } from "@/shared/components/error-state";
+import { Badge } from "@/shared/components/ui/badge";
+import { Card } from "@/shared/components/ui/card";
+import { SectionHeader } from "@/shared/components/ui/section-header";
+import { Skeleton } from "@/shared/components/ui/skeleton";
+import { formatRelativeTime } from "@/shared/lib/utils";
+import { Cpu, PlugZap, TimerReset } from "lucide-react";
+
+export function SettingsPage() {
+  const integrationsQuery = useIntegrationsQuery();
+  const cronQuery = useCronJobsQuery();
+  const systemInfoQuery = useSystemInfoQuery();
+
+  if (integrationsQuery.isError || cronQuery.isError || systemInfoQuery.isError) {
+    return <ErrorState title="Settings unavailable" description="One or more operational settings data sources failed to load." />;
+  }
+
+  const integrations = integrationsQuery.data ?? [];
+  const cronJobs = cronQuery.data ?? [];
+  const systemInfo = systemInfoQuery.data?.[0];
+
+  return (
+    <div className="space-y-6">
+      <SectionHeader
+        eyebrow="Settings"
+        title="Integrations and runtime"
+        description="Monitor system posture, linked services, and scheduled automation jobs."
+      />
+
+      <div className="grid gap-6 xl:grid-cols-3">
+        <Card className="p-6 xl:col-span-2">
+          <div className="mb-5 flex items-center gap-3">
+            <PlugZap className="size-5 text-emerald-300" />
+            <div>
+              <h2 className="text-xl font-semibold text-white">Integrations</h2>
+              <p className="text-sm text-slate-400">Connectivity and response profiles</p>
+            </div>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            {integrationsQuery.isLoading
+              ? Array.from({ length: 4 }).map((_, index) => <Skeleton key={index} className="h-40 rounded-3xl" />)
+              : integrations.map((integration) => (
+                  <div key={integration.id} className="rounded-3xl border border-white/8 bg-white/[0.03] p-5">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-lg font-semibold text-white">{integration.name}</h3>
+                      <Badge
+                        tone={
+                          integration.status === "connected"
+                            ? "success"
+                            : integration.status === "degraded"
+                              ? "warning"
+                              : "danger"
+                        }
+                      >
+                        {integration.status}
+                      </Badge>
+                    </div>
+                    <p className="mt-3 text-sm text-slate-400">{integration.description}</p>
+                    <p className="mt-4 text-sm text-slate-300">
+                      Latency: {integration.latency_ms > 0 ? `${integration.latency_ms}ms` : "offline"}
+                    </p>
+                  </div>
+                ))}
+          </div>
+        </Card>
+
+        <Card className="p-6">
+          <div className="mb-5 flex items-center gap-3">
+            <Cpu className="size-5 text-sky-300" />
+            <div>
+              <h2 className="text-xl font-semibold text-white">System Info</h2>
+              <p className="text-sm text-slate-400">Runtime environment snapshot</p>
+            </div>
+          </div>
+          {systemInfoQuery.isLoading || !systemInfo ? (
+            <Skeleton className="h-56 rounded-3xl" />
+          ) : (
+            <div className="space-y-4">
+              <SystemRow label="Region" value={systemInfo.region} />
+              <SystemRow label="Version" value={systemInfo.version} />
+              <SystemRow label="Uptime" value={`${systemInfo.uptime_hours} hours`} />
+              <SystemRow label="Queue depth" value={String(systemInfo.queue_depth)} />
+              <SystemRow label="Throughput/hr" value={String(systemInfo.throughput_per_hour)} />
+            </div>
+          )}
+        </Card>
+      </div>
+
+      <Card className="p-6">
+        <div className="mb-5 flex items-center gap-3">
+          <TimerReset className="size-5 text-amber-200" />
+          <div>
+            <h2 className="text-xl font-semibold text-white">Cron Jobs</h2>
+            <p className="text-sm text-slate-400">Scheduled automations and health</p>
+          </div>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-left text-sm">
+            <thead>
+              <tr className="border-b border-white/8 text-slate-500">
+                <th className="pb-3 font-medium">Job</th>
+                <th className="pb-3 font-medium">Schedule</th>
+                <th className="pb-3 font-medium">Last run</th>
+                <th className="pb-3 font-medium">Next run</th>
+                <th className="pb-3 font-medium">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {cronQuery.isLoading
+                ? Array.from({ length: 3 }).map((_, index) => (
+                    <tr key={index}>
+                      <td className="py-3" colSpan={5}>
+                        <Skeleton className="h-12 rounded-2xl" />
+                      </td>
+                    </tr>
+                  ))
+                : cronJobs.map((job) => (
+                    <tr key={job.id} className="border-b border-white/6">
+                      <td className="py-4 text-white">{job.name}</td>
+                      <td className="py-4 text-slate-400">{job.schedule}</td>
+                      <td className="py-4 text-slate-400">{job.last_run_at ? formatRelativeTime(job.last_run_at) : "Never"}</td>
+                      <td className="py-4 text-slate-400">{job.next_run_at ? formatRelativeTime(job.next_run_at) : "N/A"}</td>
+                      <td className="py-4">
+                        <Badge tone={job.status === "healthy" ? "success" : job.status === "paused" ? "warning" : "danger"}>{job.status}</Badge>
+                      </td>
+                    </tr>
+                  ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function SystemRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-3">
+      <span className="text-sm text-slate-400">{label}</span>
+      <span className="font-medium text-white">{value}</span>
+    </div>
+  );
+}
