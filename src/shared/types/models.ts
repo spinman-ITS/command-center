@@ -27,7 +27,7 @@ export interface Task {
   id: string;
   title: string;
   description: string;
-  status: string;
+  status: TaskStatus;
   priority: string;
   assigned_to: string;
   source: string;

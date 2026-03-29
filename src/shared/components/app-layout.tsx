@@ -2,7 +2,7 @@ import { AGENT_COLORS } from "@/shared/lib/agent-colors";
 import { cn } from "@/shared/lib/utils";
 import { ChevronLeft, ChevronRight, Activity, BookOpenText, Brain, FolderKanban, LayoutDashboard, Settings, UsersRound } from "lucide-react";
 import { useEffect, useState } from "react";
-import { NavLink, Outlet, useLocation } from "react-router-dom";
+import { NavLink, Outlet } from "react-router-dom";
 
 const navItems = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -14,14 +14,18 @@ const navItems = [
   { to: "/settings", label: "Settings", icon: Settings },
 ];
 
+const SIDEBAR_STORAGE_KEY = "command-center.sidebar-collapsed";
+
 export function AppLayout() {
-  const location = useLocation();
-  const projectsView = location.pathname.startsWith("/projects");
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(projectsView);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.localStorage.getItem(SIDEBAR_STORAGE_KEY) === "true";
+  });
 
   useEffect(() => {
-    setIsSidebarCollapsed(projectsView);
-  }, [projectsView]);
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(SIDEBAR_STORAGE_KEY, String(isSidebarCollapsed));
+  }, [isSidebarCollapsed]);
 
   return (
     <div className="min-h-screen bg-[#05070d] text-white">
