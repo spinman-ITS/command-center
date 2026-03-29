@@ -135,7 +135,7 @@ export function UsageCostsPage() {
   const mostActiveAgent = agents.find((a) => a.agent_id === mostActiveAgentId);
 
   // Per-agent breakdown
-  const agentMap = new Map<string, { tokens: number; estimated_cost: number; model: string; lastActive: string }>();
+  const agentMap = new Map<string, { tokens: number; cost: number; model: string; lastActive: string }>();
   for (const r of rows) {
     const prev = agentMap.get(r.agent_id);
     const tokens = (r.input_tokens ?? 0) + (r.output_tokens ?? 0);
@@ -152,7 +152,7 @@ export function UsageCostsPage() {
   }
 
   // Per-model breakdown
-  const modelMap = new Map<string, { tokens: number; estimated_cost: number; requests: number }>();
+  const modelMap = new Map<string, { tokens: number; cost: number; requests: number }>();
   for (const r of rows) {
     const prev = modelMap.get(r.model);
     const tokens = (r.input_tokens ?? 0) + (r.output_tokens ?? 0);
