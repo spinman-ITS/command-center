@@ -32,9 +32,11 @@ import {
   ClipboardList,
   Flag,
 
+  ChevronDown,
   FlaskConical,
   ImageIcon,
   Layers3,
+  ListChecks,
   Loader2,
   Pencil,
   Plus,
@@ -761,6 +763,9 @@ function TaskDetailSheet({
             </Card>
           )}
 
+          {/* Testing Instructions */}
+          {!editing && task.testing_instructions && <TestingInstructionsSection text={task.testing_instructions} />}
+
           {/* QA Results */}
           {!editing && task.qa_results && <QaResultsSection qa={task.qa_results} />}
 
@@ -806,6 +811,46 @@ function TaskDetailSheet({
         </div>
       </div>
     </div>
+  );
+}
+
+/* ── Testing Instructions Section ─────────────────────────────────── */
+
+function TestingInstructionsSection({ text }: { text: string }) {
+  const [open, setOpen] = useState(true);
+
+  // Simple markdown-ish rendering: headers, lists, bold, inline code
+  const rendered = text
+    .split("\n")
+    .map((line, i) => {
+      if (/^###\s/.test(line)) return <p key={i} className="mt-3 mb-1 text-xs font-semibold uppercase tracking-wide text-slate-300">{line.replace(/^###\s*/, "")}</p>;
+      if (/^##\s/.test(line)) return <p key={i} className="mt-3 mb-1 text-sm font-semibold text-slate-200">{line.replace(/^##\s*/, "")}</p>;
+      if (/^#\s/.test(line)) return <p key={i} className="mt-3 mb-1 text-base font-bold text-white">{line.replace(/^#\s*/, "")}</p>;
+      if (/^[-*]\s/.test(line)) return <p key={i} className="pl-3 before:content-['•'] before:mr-2 before:text-slate-500">{line.replace(/^[-*]\s*/, "")}</p>;
+      if (/^\d+\.\s/.test(line)) return <p key={i} className="pl-3">{line}</p>;
+      if (line.trim() === "") return <div key={i} className="h-2" />;
+      return <p key={i}>{line}</p>;
+    });
+
+  return (
+    <Card className="border-white/8 bg-white/[0.03] p-4 shadow-none">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="flex w-full items-center justify-between"
+      >
+        <div className="flex items-center gap-2">
+          <ListChecks className="size-4 text-slate-400" />
+          <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Testing Instructions</p>
+        </div>
+        <ChevronDown className={cn("size-4 text-slate-500 transition-transform", open && "rotate-180")} />
+      </button>
+      {open && (
+        <div className="mt-3 rounded-xl border border-white/8 bg-white/[0.02] p-3 font-mono text-xs leading-relaxed text-slate-300">
+          {rendered}
+        </div>
+      )}
+    </Card>
   );
 }
 

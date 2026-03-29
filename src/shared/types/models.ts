@@ -50,6 +50,7 @@ export interface Task {
   due_date: string | null;
   completed_at: string | null;
   qa_results: QaResults | null;
+  testing_instructions: string | null;
   created_at: string;
   updated_at: string;
 }
