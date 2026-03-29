@@ -41,7 +41,7 @@ import {
   X,
 } from "lucide-react";
 import type { ReactNode } from "react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 
 const columns: Array<{ key: TaskStatus; label: string; dotClassName: string }> = [
@@ -103,18 +103,36 @@ export function ProjectsBoardPage() {
     }
   }, [filteredTasks, selectedTaskId]);
 
+  const wasDraggingRef = useRef(false);
+
   const handleDragStart = useCallback((event: DragStartEvent) => {
+    wasDraggingRef.current = true;
     setActiveTaskId(event.active.id as string);
   }, []);
+
+  const validStatuses = new Set(columns.map((c) => c.key));
 
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
       setActiveTaskId(null);
+      setTimeout(() => { wasDraggingRef.current = false; }, 100);
       const { active, over } = event;
       if (!over) return;
 
+      // Resolve the drop target to a column key
+      // over.id could be a column key (droppable) or a task id (sortable)
+      let newStatus = over.id as string as TaskStatus;
+      if (!validStatuses.has(newStatus)) {
+        // Dropped on a task card — find which column that task belongs to
+        const overTask = filteredTasks.find((t) => t.id === newStatus);
+        if (overTask) {
+          newStatus = overTask.status;
+        } else {
+          return; // Unknown drop target
+        }
+      }
+
       const taskId = active.id as string;
-      const newStatus = over.id as TaskStatus;
       const task = filteredTasks.find((t) => t.id === taskId);
       if (!task || task.status === newStatus) return;
 
