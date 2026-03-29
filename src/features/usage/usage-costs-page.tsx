@@ -14,6 +14,7 @@ import { useState } from "react";
 interface UsageRow {
   id: string;
   agent_id: string;
+  provider: string; // Added provider field
   model: string;
   input_tokens: number;
   output_tokens: number;
@@ -119,6 +120,44 @@ export function UsageCostsPage() {
   const totalCost = rows.reduce((sum, r) => sum + (r.estimated_cost ?? 0), 0);
   const totalTokens = rows.reduce((sum, r) => sum + (r.input_tokens ?? 0) + (r.output_tokens ?? 0), 0);
 
+  // Per-provider breakdown
+  const providerMap = new Map<
+    string,
+    { tokens: number; cost: number; requests: number; topModel: string; modelCounts: Map<string, number> }
+  >();
+  for (const r of rows) {
+    const prev = providerMap.get(r.provider);
+    const tokens = (r.input_tokens ?? 0) + (r.output_tokens ?? 0);
+    if (!prev) {
+      providerMap.set(r.provider, {
+        tokens,
+        cost: r.estimated_cost ?? 0,
+        requests: 1,
+        topModel: r.model,
+        modelCounts: new Map([[r.model, 1]]),
+      });
+    } else {
+      prev.tokens += tokens;
+      prev.cost += r.estimated_cost ?? 0;
+      prev.requests += 1;
+      prev.modelCounts.set(r.model, (prev.modelCounts.get(r.model) ?? 0) + 1);
+      // Update top model for provider
+      if ((prev.modelCounts.get(r.model) ?? 0) > (prev.modelCounts.get(prev.topModel) ?? 0)) {
+        prev.topModel = r.model;
+      }
+    }
+  }
+  const sortedProviders = [...providerMap.entries()].sort((a, b) => b[1].cost - a[1].cost);
+
+  const providerColors: Record<string, string> = {
+    anthropic: "#f97316", // orange
+    openai: "#22c55e", // green
+    google: "#3b82f6", // blue
+    gemini: "#3b82f6", // blue (alias for google)
+    xai: "#6b7280", // gray
+    openrouter: "#a855f7", // purple
+  };
+
   // Most used model
   const modelCounts = new Map<string, number>();
   for (const r of rows) {
@@ -167,6 +206,16 @@ export function UsageCostsPage() {
   const sortedModels = [...modelMap.entries()].sort((a, b) => b[1].cost - a[1].cost);
   const sortedAgents = [...agentMap.entries()].sort((a, b) => b[1].cost - a[1].cost);
 
+  // Daily cost breakdown
+  const dailyCosts = new Map<string, number>();
+  for (const r of rows) {
+    const date = new Date(r.created_at).toISOString().split("T")[0];
+    dailyCosts.set(date, (dailyCosts.get(date) ?? 0) + r.estimated_cost);
+  }
+
+  const sortedDailyCosts = [...dailyCosts.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  const maxDailyCost = Math.max(...sortedDailyCosts.map(([, cost]) => cost), 0);
+
   const isLoading = usageQuery.isLoading;
 
   return (
@@ -196,6 +245,12 @@ export function UsageCostsPage() {
         }
       />
 
+      {totalCost > 50 && (
+        <div className="rounded-xl border border-yellow-500/30 bg-yellow-500/10 p-4 text-sm text-yellow-200">
+          ⚠️ Monthly spend is at {formatCost(totalCost)} — approaching budget
+        </div>
+      )}
+
       {/* Summary cards */}
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {isLoading ? (
@@ -212,6 +267,74 @@ export function UsageCostsPage() {
               icon={<Bot className="size-5" />}
             />
           </>
+        )}
+      </section>
+
+      {/* Spend by Provider */}
+      <section>
+        <div className="mb-5">
+          <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Spend Overview</p>
+          <h2 className="mt-2 text-xl font-semibold text-white">Spend by Provider</h2>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          {isLoading ? (
+            Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-32 rounded-3xl" />)
+          ) : sortedProviders.length === 0 ? (
+            <p className="text-sm text-slate-500">No usage data found for this period.</p>
+          ) : (
+            sortedProviders.map(([providerName, data]) => (
+              <Card
+                key={providerName}
+                className="p-5"
+                style={providerColors[providerName.toLowerCase()] ? { borderLeftColor: providerColors[providerName.toLowerCase()], borderLeftWidth: 3 } : undefined}
+              >
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.28em] text-slate-500">{providerName}</p>
+                    <p className="mt-2 text-2xl font-semibold text-white">{formatCost(data.cost)}</p>
+                    <p className="mt-1 text-sm text-slate-400">
+                      {data.requests} requests · {data.topModel.split("/").pop()}
+                    </p>
+                  </div>
+                  <div
+                    className="size-10 rounded-full flex items-center justify-center text-white"
+                    style={{ backgroundColor: providerColors[providerName.toLowerCase()] || "#6b7280" }}
+                  ></div>
+                </div>
+              </Card>
+            ))
+          )}
+        </div>
+      </section>
+
+      {/* Daily Cost Chart */}
+      <section>
+        <div className="mb-5">
+          <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Daily Overview</p>
+          <h2 className="mt-2 text-xl font-semibold text-white">Daily Spend</h2>
+        </div>
+        {isLoading ? (
+          <Skeleton className="h-40 rounded-3xl" />
+        ) : sortedDailyCosts.length === 0 ? (
+          <p className="text-sm text-slate-500">No usage data found for this period.</p>
+        ) : (
+          <Card className="p-6">
+            <div className="flex h-32 items-end justify-between gap-2">
+              {sortedDailyCosts.map(([date, cost]) => {
+                const heightPct = maxDailyCost > 0 ? (cost / maxDailyCost) * 100 : 0;
+                const displayDate = new Date(date).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+                return (
+                  <div key={date} className="flex flex-1 flex-col items-center gap-1">
+                    <div
+                      className="w-full rounded-t-sm bg-sky-400/70 transition-all duration-300 ease-out"
+                      style={{ height: `${Math.max(heightPct, 3)}%` }}
+                    />
+                    <p className="text-[10px] text-slate-500">{displayDate}</p>
+                  </div>
+                );
+              })}
+            </div>
+          </Card>
         )}
       </section>
 
