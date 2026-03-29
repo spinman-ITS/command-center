@@ -1,4 +1,4 @@
-export type TaskStatus = "backlog" | "in_progress" | "blocked" | "review" | "completed";
+export type TaskStatus = "backlog" | "up_next" | "in_progress" | "blocked" | "review" | "completed";
 
 export interface Agent {
   id: string;

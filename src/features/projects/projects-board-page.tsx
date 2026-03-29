@@ -12,6 +12,7 @@ import { useParams } from "react-router-dom";
 
 const columns: Array<{ key: TaskStatus; label: string; dotClassName: string }> = [
   { key: "backlog", label: "Backlog", dotClassName: "bg-slate-400/80" },
+  { key: "up_next", label: "Up Next", dotClassName: "bg-violet-400/80" },
   { key: "in_progress", label: "In Progress", dotClassName: "bg-sky-400/80" },
   { key: "blocked", label: "Blocked", dotClassName: "bg-rose-400/80" },
   { key: "review", label: "Review", dotClassName: "bg-amber-300/80" },
@@ -66,14 +67,14 @@ export function ProjectsBoardPage() {
       />
 
       {tasksQuery.isLoading ? (
-        <div className="grid gap-3 xl:grid-cols-5">
-          {Array.from({ length: 5 }).map((_, index) => (
+        <div className="grid gap-3 xl:grid-cols-6">
+          {Array.from({ length: 6 }).map((_, index) => (
             <Skeleton key={index} className="h-[520px] rounded-3xl" />
           ))}
         </div>
       ) : (
         <div className="overflow-x-auto pb-2">
-          <div className="grid min-w-[1400px] grid-cols-5 items-start gap-3">
+          <div className="grid min-w-[1400px] grid-cols-6 items-start gap-3">
             {columns.map((column) => {
               const columnTasks = filteredTasks.filter((task) => task.status === column.key);
 
