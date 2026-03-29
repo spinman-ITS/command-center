@@ -1,12 +1,13 @@
 import { AGENT_COLORS } from "@/shared/lib/agent-colors";
 import { cn } from "@/shared/lib/utils";
-import { ChevronLeft, ChevronRight, Activity, BarChart3, BookOpenText, Brain, FolderKanban, LayoutDashboard, Newspaper, Settings, UsersRound, Video } from "lucide-react";
+import { ChevronLeft, ChevronRight, Activity, BarChart3, BookOpenText, Brain, FolderKanban, LayoutDashboard, Megaphone, Newspaper, Settings, UsersRound, Video } from "lucide-react";
 import { useEffect, useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 
 const navItems = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard },
   { to: "/projects", label: "Projects", icon: FolderKanban },
+  { to: "/marketing", label: "Marketing", icon: Megaphone },
   { to: "/team", label: "Team", icon: UsersRound },
   { to: "/docs", label: "Docs", icon: BookOpenText },
   { to: "/activity", label: "Activity", icon: Activity },

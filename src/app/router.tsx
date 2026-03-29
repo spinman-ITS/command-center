@@ -8,6 +8,7 @@ import { ProjectsListPage } from "@/features/projects/projects-list-page";
 import { SettingsPage } from "@/features/settings/settings-page";
 import { TeamPage } from "@/features/team/team-page";
 import { MeetingSummariesPage } from "@/features/meetings/meeting-summaries-page";
+import { MarketingPipelinePage } from "@/features/marketing/marketing-pipeline-page";
 import { UsageCostsPage } from "@/features/usage/usage-costs-page";
 import { AppLayout } from "@/shared/components/app-layout";
 import { createBrowserRouter } from "react-router-dom";
@@ -20,6 +21,7 @@ export const router = createBrowserRouter([
       { index: true, element: <DashboardPage /> },
       { path: "projects", element: <ProjectsListPage /> },
       { path: "projects/:name", element: <ProjectsBoardPage /> },
+      { path: "marketing", element: <MarketingPipelinePage /> },
       { path: "team", element: <TeamPage /> },
       { path: "docs", element: <DocsPage /> },
       { path: "activity", element: <ActivityPage /> },
