@@ -36,27 +36,6 @@ function useMeetingSummaries() {
   });
 }
 
-function toName(item: unknown): string {
-  if (typeof item === "string") return item;
-  if (item && typeof item === "object" && "name" in item) return String((item as Record<string, unknown>).name);
-  return String(item);
-}
-
-function parseJsonArray(value: string[] | string | null): string[] {
-  if (!value) return [];
-  if (Array.isArray(value)) return value.map(String);
-  if (typeof value === "string") {
-    try {
-      const parsed: unknown = JSON.parse(value);
-      if (Array.isArray(parsed)) return parsed.map(String);
-    } catch {
-      // not JSON
-    }
-    return value.split(",").map((s) => s.trim()).filter(Boolean);
-  }
-  return [];
-}
-
 function parseJsonArray(value: unknown): string[] {
   if (!value) return [];
   if (Array.isArray(value)) return value.map(String);
@@ -67,25 +46,12 @@ function parseJsonArray(value: unknown): string[] {
     } catch {
       // not JSON
     }
-    return [];
-  }
-  return [];
-}
-
-function parseAttendees(value: unknown): string[] {
-  if (!value) return [];
-  if (Array.isArray(value)) return value.map(toName);
-  if (typeof value === "string") {
-    try {
-      const parsed: unknown = JSON.parse(value);
-      if (Array.isArray(parsed)) return parsed.map(toName);
-    } catch {
-      // not JSON — treat as comma-separated
-    }
     return value.split(",").map((s) => s.trim()).filter(Boolean);
   }
   return [];
 }
+
+// parseAttendees consolidated into parseJsonArray
 
 function formatMeetingDate(dateString: string): string {
   const d = new Date(dateString);
@@ -110,7 +76,7 @@ function MeetingCard({ meeting }: { meeting: MeetingSummary }) {
   const [expanded, setExpanded] = useState(false);
   const dateDisplay = formatMeetingDate(meeting.meeting_date ?? meeting.date ?? meeting.created_at);
   const duration = formatDuration(meeting.duration);
-  const attendees = parseJsonArray(meeting.attendees as string[] | string | null);
+  const attendees = parseJsonArray(meeting.attendees);
   const actionItems = parseJsonArray(meeting.action_items);
   const summary = meeting.summary ?? "";
   const isLong = summary.length > 200;
