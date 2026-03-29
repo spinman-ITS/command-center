@@ -39,7 +39,7 @@ function useDailyBriefs() {
       if (error) throw error;
       return (data ?? []).map((row: Record<string, unknown>) => ({
         ...row,
-        type: normalizeBriefType(typeof row.type === "string" ? row.type : ""),
+        type: normalizeBriefType(typeof row.brief_type === "string" ? row.brief_type : ""),
       })) as DailyBrief[];
     },
   });
