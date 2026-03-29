@@ -35,3 +35,45 @@ export function getIntegrations() {
 export function getCronJobs() {
   return selectOrFallback<CronJob>("cron_jobs");
 }
+
+// ── Task mutations ──────────────────────────────────────────────────
+
+export interface CreateTaskInput {
+  title: string;
+  description?: string;
+  priority?: string;
+  assigned_to?: string;
+  source?: string;
+  status?: string;
+}
+
+export async function createTask(input: CreateTaskInput): Promise<Task | null> {
+  if (!supabase) return null;
+  const response = await supabase
+    .from("tasks")
+    .insert({
+      title: input.title,
+      description: input.description ?? "",
+      priority: input.priority ?? "medium",
+      assigned_to: input.assigned_to ?? "",
+      source: input.source ?? "",
+      status: input.status ?? "backlog",
+    })
+    .select()
+    .single();
+  if (response.error) throw response.error;
+  return response.data as Task;
+}
+
+export async function updateTask(id: string, updates: Partial<Omit<Task, "id" | "created_at">>): Promise<Task | null> {
+  if (!supabase) return null;
+  const response = await supabase.from("tasks").update(updates).eq("id", id).select().single();
+  if (response.error) throw response.error;
+  return response.data as Task;
+}
+
+export async function deleteTask(id: string): Promise<void> {
+  if (!supabase) return;
+  const { error } = await supabase.from("tasks").delete().eq("id", id);
+  if (error) throw error;
+}

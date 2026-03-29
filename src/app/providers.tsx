@@ -1,4 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { ToastProvider } from "@/shared/components/ui/toast";
 import type { PropsWithChildren } from "react";
 
 const queryClient = new QueryClient({
@@ -11,6 +12,13 @@ const queryClient = new QueryClient({
   },
 });
 
+export { queryClient };
+
 export function AppProviders({ children }: PropsWithChildren) {
-  return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
+  return (
+    <QueryClientProvider client={queryClient}>
+      {children}
+      <ToastProvider />
+    </QueryClientProvider>
+  );
 }
