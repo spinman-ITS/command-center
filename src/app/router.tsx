@@ -8,6 +8,7 @@ import { ProjectsListPage } from "@/features/projects/projects-list-page";
 import { SettingsPage } from "@/features/settings/settings-page";
 import { TeamPage } from "@/features/team/team-page";
 import { MeetingSummariesPage } from "@/features/meetings/meeting-summaries-page";
+import { UsageCostsPage } from "@/features/usage/usage-costs-page";
 import { AppLayout } from "@/shared/components/app-layout";
 import { createBrowserRouter } from "react-router-dom";
 
@@ -25,6 +26,7 @@ export const router = createBrowserRouter([
       { path: "briefs", element: <DailyBriefsPage /> },
       { path: "meetings", element: <MeetingSummariesPage /> },
       { path: "memory", element: <MemoryPage /> },
+      { path: "usage", element: <UsageCostsPage /> },
       { path: "settings", element: <SettingsPage /> },
     ],
   },

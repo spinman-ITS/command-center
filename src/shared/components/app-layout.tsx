@@ -1,6 +1,6 @@
 import { AGENT_COLORS } from "@/shared/lib/agent-colors";
 import { cn } from "@/shared/lib/utils";
-import { ChevronLeft, ChevronRight, Activity, BookOpenText, Brain, FolderKanban, LayoutDashboard, Newspaper, Settings, UsersRound, Video } from "lucide-react";
+import { ChevronLeft, ChevronRight, Activity, BarChart3, BookOpenText, Brain, FolderKanban, LayoutDashboard, Newspaper, Settings, UsersRound, Video } from "lucide-react";
 import { useEffect, useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 
@@ -13,6 +13,7 @@ const navItems = [
   { to: "/briefs", label: "Daily Briefs", icon: Newspaper },
   { to: "/meetings", label: "Meetings", icon: Video },
   { to: "/memory", label: "Memory", icon: Brain },
+  { to: "/usage", label: "Usage & Costs", icon: BarChart3 },
   { to: "/settings", label: "Settings", icon: Settings },
 ];
 

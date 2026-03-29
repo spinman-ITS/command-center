@@ -19,6 +19,13 @@ interface DailyBrief {
   [key: string]: unknown;
 }
 
+/** Normalize raw type strings from DB (e.g. "Morning Brief", "EOD Brief") to our union. */
+function normalizeBriefType(raw: string): BriefType {
+  const lower = (raw ?? "").toLowerCase();
+  if (lower.includes("eod") || lower.includes("end")) return "eod";
+  return "morning";
+}
+
 function useDailyBriefs() {
   return useQuery<DailyBrief[]>({
     queryKey: ["daily-briefs"],
@@ -30,7 +37,10 @@ function useDailyBriefs() {
         .order("created_at", { ascending: false })
         .limit(30);
       if (error) throw error;
-      return (data ?? []) as DailyBrief[];
+      return (data ?? []).map((row) => ({
+        ...row,
+        type: normalizeBriefType(row.type as string),
+      })) as DailyBrief[];
     },
   });
 }
@@ -65,13 +75,13 @@ function renderMarkdown(text: string): string {
 function BriefCard({ brief }: { brief: DailyBrief }) {
   const [expanded, setExpanded] = useState(false);
   const style = TYPE_STYLES[brief.type] ?? TYPE_STYLES.morning;
-  const dateDisplay = formatBriefDate(brief.date ?? brief.created_at);
+  const dateDisplay = formatBriefDate(brief.created_at);
   const isLong = (brief.content?.length ?? 0) > 400;
 
   return (
     <div className="rounded-2xl border border-white/8 bg-white/[0.03] p-5 transition hover:border-white/12">
       <div className="flex flex-wrap items-center gap-3">
-        <p className="text-xs uppercase tracking-[0.22em] text-slate-500">{dateDisplay}</p>
+        <p className="text-xs uppercase tracking-[0.22em] text-slate-400">{dateDisplay}</p>
         <span className={cn("inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wider", style.bg, style.text)}>
           <span className={cn("size-1.5 rounded-full", style.dot)} />
           {style.label}
@@ -89,7 +99,7 @@ function BriefCard({ brief }: { brief: DailyBrief }) {
         <button
           type="button"
           onClick={() => setExpanded((v) => !v)}
-          className="mt-2 inline-flex items-center gap-1 text-xs text-slate-500 transition hover:text-slate-300"
+          className="mt-2 inline-flex items-center gap-1 text-xs text-slate-400 transition hover:text-slate-200"
         >
           {expanded ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
           {expanded ? "Collapse" : "Read more"}
@@ -134,7 +144,7 @@ export function DailyBriefsPage() {
                 className={cn(
                   "rounded-lg px-3 py-1.5 text-xs font-medium uppercase tracking-wider transition",
                   filter === f.value
-                    ? "bg-white/10 text-white shadow-sm"
+                    ? "bg-sky-500/20 text-sky-300 shadow-sm ring-1 ring-sky-500/40"
                     : "text-slate-400 hover:text-white",
                 )}
               >

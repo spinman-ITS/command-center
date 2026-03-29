@@ -12,7 +12,7 @@ interface MeetingSummary {
   title: string;
   summary: string | null;
   action_items: string[] | string | null;
-  attendees: string[] | string | null;
+  attendees: unknown;
   meeting_date: string | null;
   date: string | null;
   duration: string | number | null;
@@ -36,18 +36,55 @@ function useMeetingSummaries() {
   });
 }
 
+function toName(item: unknown): string {
+  if (typeof item === "string") return item;
+  if (item && typeof item === "object" && "name" in item) return String((item as Record<string, unknown>).name);
+  return String(item);
+}
+
 function parseJsonArray(value: string[] | string | null): string[] {
   if (!value) return [];
-  if (Array.isArray(value)) return value;
-  try {
-    const parsed: unknown = JSON.parse(value);
-    return Array.isArray(parsed) ? parsed.map(String) : [String(value)];
-  } catch {
-    return value
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
+  if (Array.isArray(value)) return value.map(String);
+  if (typeof value === "string") {
+    try {
+      const parsed: unknown = JSON.parse(value);
+      if (Array.isArray(parsed)) return parsed.map(String);
+    } catch {
+      // not JSON
+    }
+    return value.split(",").map((s) => s.trim()).filter(Boolean);
   }
+  return [];
+}
+
+function parseJsonArray(value: unknown): string[] {
+  if (!value) return [];
+  if (Array.isArray(value)) return value.map(String);
+  if (typeof value === "string") {
+    try {
+      const parsed: unknown = JSON.parse(value);
+      if (Array.isArray(parsed)) return parsed.map(String);
+    } catch {
+      // not JSON
+    }
+    return [];
+  }
+  return [];
+}
+
+function parseAttendees(value: unknown): string[] {
+  if (!value) return [];
+  if (Array.isArray(value)) return value.map(toName);
+  if (typeof value === "string") {
+    try {
+      const parsed: unknown = JSON.parse(value);
+      if (Array.isArray(parsed)) return parsed.map(toName);
+    } catch {
+      // not JSON — treat as comma-separated
+    }
+    return value.split(",").map((s) => s.trim()).filter(Boolean);
+  }
+  return [];
 }
 
 function formatMeetingDate(dateString: string): string {
@@ -73,7 +110,7 @@ function MeetingCard({ meeting }: { meeting: MeetingSummary }) {
   const [expanded, setExpanded] = useState(false);
   const dateDisplay = formatMeetingDate(meeting.meeting_date ?? meeting.date ?? meeting.created_at);
   const duration = formatDuration(meeting.duration);
-  const attendees = parseJsonArray(meeting.attendees);
+  const attendees = parseJsonArray(meeting.attendees as string[] | string | null);
   const actionItems = parseJsonArray(meeting.action_items);
   const summary = meeting.summary ?? "";
   const isLong = summary.length > 200;
