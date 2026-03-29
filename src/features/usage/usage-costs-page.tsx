@@ -17,7 +17,7 @@ interface UsageRow {
   model: string;
   input_tokens: number;
   output_tokens: number;
-  cost: number;
+  estimated_cost: number;
   created_at: string;
 }
 
@@ -116,7 +116,7 @@ export function UsageCostsPage() {
 
   // ── Computed aggregates ─────────────────────────────────────────
 
-  const totalCost = rows.reduce((sum, r) => sum + (r.cost ?? 0), 0);
+  const totalCost = rows.reduce((sum, r) => sum + (r.estimated_cost ?? 0), 0);
   const totalTokens = rows.reduce((sum, r) => sum + (r.input_tokens ?? 0) + (r.output_tokens ?? 0), 0);
 
   // Most used model
@@ -135,15 +135,15 @@ export function UsageCostsPage() {
   const mostActiveAgent = agents.find((a) => a.agent_id === mostActiveAgentId);
 
   // Per-agent breakdown
-  const agentMap = new Map<string, { tokens: number; cost: number; model: string; lastActive: string }>();
+  const agentMap = new Map<string, { tokens: number; estimated_cost: number; model: string; lastActive: string }>();
   for (const r of rows) {
     const prev = agentMap.get(r.agent_id);
     const tokens = (r.input_tokens ?? 0) + (r.output_tokens ?? 0);
     if (!prev) {
-      agentMap.set(r.agent_id, { tokens, cost: r.cost ?? 0, model: r.model, lastActive: r.created_at });
+      agentMap.set(r.agent_id, { tokens, cost: r.estimated_cost ?? 0, model: r.model, lastActive: r.created_at });
     } else {
       prev.tokens += tokens;
-      prev.cost += r.cost ?? 0;
+      prev.cost += r.estimated_cost ?? 0;
       if (r.created_at > prev.lastActive) {
         prev.lastActive = r.created_at;
         prev.model = r.model;
@@ -152,15 +152,15 @@ export function UsageCostsPage() {
   }
 
   // Per-model breakdown
-  const modelMap = new Map<string, { tokens: number; cost: number; requests: number }>();
+  const modelMap = new Map<string, { tokens: number; estimated_cost: number; requests: number }>();
   for (const r of rows) {
     const prev = modelMap.get(r.model);
     const tokens = (r.input_tokens ?? 0) + (r.output_tokens ?? 0);
     if (!prev) {
-      modelMap.set(r.model, { tokens, cost: r.cost ?? 0, requests: 1 });
+      modelMap.set(r.model, { tokens, cost: r.estimated_cost ?? 0, requests: 1 });
     } else {
       prev.tokens += tokens;
-      prev.cost += r.cost ?? 0;
+      prev.cost += r.estimated_cost ?? 0;
       prev.requests += 1;
     }
   }
