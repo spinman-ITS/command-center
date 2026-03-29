@@ -1,14 +1,5 @@
 import { useRealtimeInvalidation } from "@/shared/hooks/use-realtime-invalidation";
-import {
-  getActivity,
-  getAgents,
-  getCronJobs,
-  getDocs,
-  getIntegrations,
-  getProjects,
-  getSystemInfo,
-  getTasks,
-} from "@/shared/lib/data";
+import { getActivity, getAgents, getCronJobs, getDocs, getIntegrations, getTasks } from "@/shared/lib/data";
 import { useQuery } from "@tanstack/react-query";
 
 export function useAgentsQuery() {
@@ -16,19 +7,14 @@ export function useAgentsQuery() {
   return useQuery({ queryKey: ["agents"], queryFn: getAgents });
 }
 
-export function useProjectsQuery() {
-  useRealtimeInvalidation([{ table: "tasks", queryKey: "projects" }]);
-  return useQuery({ queryKey: ["projects"], queryFn: getProjects });
-}
-
 export function useTasksQuery() {
   useRealtimeInvalidation([{ table: "tasks", queryKey: "tasks" }]);
   return useQuery({ queryKey: ["tasks"], queryFn: getTasks });
 }
 
-export function useActivityQuery() {
-  useRealtimeInvalidation([{ table: "agent_activity", queryKey: "activity" }]);
-  return useQuery({ queryKey: ["activity"], queryFn: getActivity });
+export function useActivityQuery(limit = 50) {
+  useRealtimeInvalidation([{ table: "agent_activity", queryKey: "activity", exactKey: ["activity", limit] }]);
+  return useQuery({ queryKey: ["activity", limit], queryFn: () => getActivity(limit) });
 }
 
 export function useDocsQuery() {
@@ -42,8 +28,4 @@ export function useIntegrationsQuery() {
 
 export function useCronJobsQuery() {
   return useQuery({ queryKey: ["cron-jobs"], queryFn: getCronJobs });
-}
-
-export function useSystemInfoQuery() {
-  return useQuery({ queryKey: ["system-info"], queryFn: getSystemInfo });
 }

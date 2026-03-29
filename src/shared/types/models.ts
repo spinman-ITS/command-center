@@ -1,64 +1,51 @@
-export type AgentStatus = "online" | "focus" | "offline" | "degraded";
 export type TaskStatus = "backlog" | "in_progress" | "blocked" | "review" | "completed";
-export type ActivityLevel = "info" | "warning" | "critical" | "success";
 
 export interface Agent {
   id: string;
+  agent_id: string;
   name: string;
   role: string;
-  status: AgentStatus;
+  model: string;
   color: string;
-  avatar_url: string | null;
-  workload: number;
-  throughput: number;
-  accuracy: number;
-  projects_count: number;
-  response_time_ms: number;
-  last_seen_at: string;
-  specialty: string;
-}
-
-export interface Project {
-  id: string;
-  name: string;
-  summary: string;
-  source: string;
-  health: "healthy" | "watch" | "risk";
-  owner_agent_id: string | null;
-  updated_at: string;
-}
-
-export interface Task {
-  id: string;
-  title: string;
-  project_name: string;
-  source: string;
-  status: TaskStatus;
-  priority: "low" | "medium" | "high" | "urgent";
-  assignee_agent_id: string | null;
-  progress: number;
-  due_at: string | null;
-  tags: string[] | null;
+  emoji: string;
+  workspace: string;
+  status: string;
+  created_at: string;
   updated_at: string;
 }
 
 export interface ActivityItem {
   id: string;
-  agent_id: string | null;
-  project_name: string | null;
+  agent_id: string;
+  action: string;
+  details: string;
+  metadata: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface Task {
+  id: string;
   title: string;
   description: string;
-  level: ActivityLevel;
+  status: string;
+  priority: string;
+  assigned_to: string;
+  source: string;
+  source_id: string | null;
+  due_date: string | null;
+  completed_at: string | null;
   created_at: string;
-  type: string;
+  updated_at: string;
 }
 
 export interface DocumentRecord {
   id: string;
   title: string;
-  category: string;
-  type: string;
   content: string;
+  doc_type: string;
+  category: string;
+  tags: string[];
+  file_path: string;
   created_at: string;
   updated_at: string;
 }
@@ -77,14 +64,6 @@ export interface CronJob {
   schedule: string;
   last_run_at: string | null;
   next_run_at: string | null;
-  status: "healthy" | "paused" | "failing";
-}
-
-export interface SystemInfo {
-  id: string;
-  region: string;
-  version: string;
-  uptime_hours: number;
-  queue_depth: number;
-  throughput_per_hour: number;
+  last_status?: string | null;
+  status?: "healthy" | "paused" | "failing";
 }

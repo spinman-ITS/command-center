@@ -1,66 +1,37 @@
 import { supabase } from "@/integrations/supabase/client";
-import {
-  mockActivity,
-  mockAgents,
-  mockCronJobs,
-  mockDocs,
-  mockIntegrations,
-  mockProjects,
-  mockSystemInfo,
-  mockTasks,
-} from "@/shared/lib/mock-data";
-import type {
-  ActivityItem,
-  Agent,
-  CronJob,
-  DocumentRecord,
-  IntegrationRecord,
-  Project,
-  SystemInfo,
-  Task,
-} from "@/shared/types/models";
+import type { ActivityItem, Agent, CronJob, DocumentRecord, IntegrationRecord, Task } from "@/shared/types/models";
 
-async function selectOrFallback<T extends object>(table: string, fallback: T[], orderColumn?: string) {
-  if (!supabase) return fallback;
-
+async function selectOrFallback<T extends object>(table: string, orderColumn?: string): Promise<T[]> {
+  if (!supabase) return [];
   const query = supabase.from(table).select("*");
   const response = orderColumn ? await query.order(orderColumn, { ascending: false }) : await query;
-
-  if (response.error || !response.data?.length) {
-    return fallback;
-  }
-
+  if (response.error || !response.data?.length) return [];
   return response.data as T[];
 }
 
 export function getAgents() {
-  return selectOrFallback<Agent>("agent_team", mockAgents);
-}
-
-export function getProjects() {
-  return selectOrFallback<Project>("projects", mockProjects, "updated_at");
+  return selectOrFallback<Agent>("agent_team", "updated_at");
 }
 
 export function getTasks() {
-  return selectOrFallback<Task>("tasks", mockTasks, "updated_at");
+  return selectOrFallback<Task>("tasks", "updated_at");
 }
 
-export function getActivity() {
-  return selectOrFallback<ActivityItem>("agent_activity", mockActivity, "created_at");
+export async function getActivity(limit = 50) {
+  if (!supabase) return [] as ActivityItem[];
+  const response = await supabase.from("agent_activity").select("*").order("created_at", { ascending: false }).limit(limit);
+  if (response.error || !response.data?.length) return [];
+  return response.data as ActivityItem[];
 }
 
 export function getDocs() {
-  return selectOrFallback<DocumentRecord>("documents", mockDocs, "updated_at");
+  return selectOrFallback<DocumentRecord>("documents", "updated_at");
 }
 
 export function getIntegrations() {
-  return selectOrFallback<IntegrationRecord>("integrations", mockIntegrations);
+  return selectOrFallback<IntegrationRecord>("integrations");
 }
 
 export function getCronJobs() {
-  return selectOrFallback<CronJob>("cron_jobs", mockCronJobs);
-}
-
-export function getSystemInfo() {
-  return selectOrFallback<SystemInfo>("system_info", mockSystemInfo);
+  return selectOrFallback<CronJob>("cron_jobs");
 }

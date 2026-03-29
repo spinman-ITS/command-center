@@ -1,6 +1,7 @@
 import { ActivityPage } from "@/features/activity/activity-page";
 import { DashboardPage } from "@/features/dashboard/dashboard-page";
 import { DocsPage } from "@/features/docs/docs-page";
+import { MemoryPage } from "@/features/memory/memory-page";
 import { ProjectsBoardPage } from "@/features/projects/projects-board-page";
 import { ProjectsListPage } from "@/features/projects/projects-list-page";
 import { SettingsPage } from "@/features/settings/settings-page";
@@ -19,6 +20,7 @@ export const router = createBrowserRouter([
       { path: "team", element: <TeamPage /> },
       { path: "docs", element: <DocsPage /> },
       { path: "activity", element: <ActivityPage /> },
+      { path: "memory", element: <MemoryPage /> },
       { path: "settings", element: <SettingsPage /> },
     ],
   },

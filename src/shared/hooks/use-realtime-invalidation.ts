@@ -1,10 +1,11 @@
 import { supabase } from "@/integrations/supabase/client";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, type QueryKey } from "@tanstack/react-query";
 import { useEffect } from "react";
 
 interface RealtimeBinding {
   table: string;
   queryKey: string;
+  exactKey?: QueryKey;
 }
 
 export function useRealtimeInvalidation(bindings: RealtimeBinding[]) {
@@ -17,13 +18,9 @@ export function useRealtimeInvalidation(bindings: RealtimeBinding[]) {
     const channel = client.channel(`atlas-live-${bindings.map((binding) => binding.table).join("-")}`);
 
     for (const binding of bindings) {
-      channel.on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: binding.table },
-        () => {
-          void queryClient.invalidateQueries({ queryKey: [binding.queryKey] });
-        },
-      );
+      channel.on("postgres_changes", { event: "*", schema: "public", table: binding.table }, () => {
+        void queryClient.invalidateQueries({ queryKey: binding.exactKey ?? [binding.queryKey] });
+      });
     }
 
     void channel.subscribe();
