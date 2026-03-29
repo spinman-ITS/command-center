@@ -23,6 +23,21 @@ export interface ActivityItem {
   created_at: string;
 }
 
+export interface QaTestResult {
+  name: string;
+  status: 'pass' | 'fail';
+  screenshot?: string;
+  notes?: string;
+}
+
+export interface QaResults {
+  status: 'pass' | 'fail' | 'partial';
+  tested_at: string;
+  tested_by: string;
+  summary: string;
+  tests: QaTestResult[];
+}
+
 export interface Task {
   id: string;
   title: string;
@@ -34,6 +49,7 @@ export interface Task {
   source_id: string | null;
   due_date: string | null;
   completed_at: string | null;
+  qa_results: QaResults | null;
   created_at: string;
   updated_at: string;
 }

@@ -11,7 +11,7 @@ import { Textarea } from "@/shared/components/ui/textarea";
 import { showToast as toast } from "@/shared/components/ui/toast";
 import { cn } from "@/shared/lib/utils";
 import { createTask, deleteTask, updateTask, type CreateTaskInput } from "@/shared/lib/data";
-import type { Agent, Task, TaskStatus } from "@/shared/types/models";
+import type { Agent, QaResults, Task, TaskStatus } from "@/shared/types/models";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   DndContext,
@@ -32,6 +32,8 @@ import {
   ClipboardList,
   Flag,
 
+  FlaskConical,
+  ImageIcon,
   Layers3,
   Loader2,
   Pencil,
@@ -759,6 +761,9 @@ function TaskDetailSheet({
             </Card>
           )}
 
+          {/* QA Results */}
+          {!editing && task.qa_results && <QaResultsSection qa={task.qa_results} />}
+
           {/* Action buttons */}
           {editing ? (
             <div className="flex gap-2">
@@ -801,6 +806,117 @@ function TaskDetailSheet({
         </div>
       </div>
     </div>
+  );
+}
+
+/* ── QA Results Section ────────────────────────────────────────────── */
+
+function QaResultsSection({ qa }: { qa: QaResults }) {
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const [lightboxCaption, setLightboxCaption] = useState("");
+
+  const statusColor = qa.status === "pass" ? "text-emerald-400 bg-emerald-400/10 border-emerald-400/20"
+    : qa.status === "fail" ? "text-rose-400 bg-rose-400/10 border-rose-400/20"
+    : "text-amber-400 bg-amber-400/10 border-amber-400/20";
+
+  const screenshotsWithTests = qa.tests.filter((t) => t.screenshot);
+
+  return (
+    <>
+      <Card className="border-white/8 bg-white/[0.03] p-4 shadow-none">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <FlaskConical className="size-4 text-slate-400" />
+            <p className="text-xs uppercase tracking-[0.24em] text-slate-500">QA Results</p>
+          </div>
+          <span className={cn("inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider", statusColor)}>
+            {qa.status}
+          </span>
+        </div>
+
+        <div className="mt-3 flex items-center gap-2 text-xs text-slate-400">
+          <span>Tested by <span className="font-medium text-slate-300">{qa.tested_by}</span></span>
+          <span>·</span>
+          <span>{formatDateTime(qa.tested_at)}</span>
+        </div>
+
+        <p className="mt-3 text-sm leading-relaxed text-slate-300">{qa.summary}</p>
+
+        {/* Test list */}
+        <div className="mt-4 space-y-2">
+          {qa.tests.map((test, i) => {
+            const pass = test.status === "pass";
+            return (
+              <div key={i} className="rounded-xl border border-white/6 bg-white/[0.02] p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-medium text-white">{test.name}</span>
+                  <span className={cn(
+                    "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider",
+                    pass ? "text-emerald-400 bg-emerald-400/10 border-emerald-400/20" : "text-rose-400 bg-rose-400/10 border-rose-400/20",
+                  )}>
+                    {test.status}
+                  </span>
+                </div>
+                {test.notes && <p className="mt-1.5 text-xs leading-relaxed text-slate-400">{test.notes}</p>}
+                {test.screenshot && (
+                  <button
+                    type="button"
+                    className="mt-2 overflow-hidden rounded-lg border border-white/8 transition hover:border-white/20"
+                    onClick={() => { setLightboxUrl(test.screenshot!); setLightboxCaption(test.name); }}
+                  >
+                    <img src={test.screenshot} alt={test.name} className="h-[80px] w-[120px] object-cover" loading="lazy" />
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Screenshot gallery */}
+        {screenshotsWithTests.length > 1 && (
+          <div className="mt-4">
+            <div className="flex items-center gap-2 mb-2">
+              <ImageIcon className="size-3.5 text-slate-500" />
+              <p className="text-[10px] uppercase tracking-[0.24em] text-slate-500">Screenshots</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {screenshotsWithTests.map((test, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  className="group relative overflow-hidden rounded-lg border border-white/8 transition hover:border-white/20"
+                  onClick={() => { setLightboxUrl(test.screenshot!); setLightboxCaption(test.name); }}
+                >
+                  <img src={test.screenshot} alt={test.name} className="h-[80px] w-[120px] object-cover" loading="lazy" />
+                  <span className="absolute inset-x-0 bottom-0 bg-black/60 px-1.5 py-0.5 text-[9px] text-slate-300 opacity-0 transition group-hover:opacity-100">
+                    {test.name}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </Card>
+
+      {/* Lightbox */}
+      {lightboxUrl && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setLightboxUrl(null)}>
+          <div className="relative max-h-[90vh] max-w-[90vw]" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              onClick={() => setLightboxUrl(null)}
+              className="absolute -right-3 -top-3 z-10 inline-flex size-8 items-center justify-center rounded-full border border-white/20 bg-black/80 text-white transition hover:bg-black"
+            >
+              <X className="size-4" />
+            </button>
+            <img src={lightboxUrl} alt={lightboxCaption} className="max-h-[85vh] max-w-[85vw] rounded-lg" />
+            {lightboxCaption && (
+              <p className="mt-2 text-center text-sm text-slate-300">{lightboxCaption}</p>
+            )}
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
