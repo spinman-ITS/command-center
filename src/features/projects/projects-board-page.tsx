@@ -66,53 +66,36 @@ export function ProjectsBoardPage() {
       />
 
       {tasksQuery.isLoading ? (
-        <div className="grid gap-3 lg:grid-cols-3 2xl:grid-cols-5">
+        <div className="grid gap-3 xl:grid-cols-5">
           {Array.from({ length: 5 }).map((_, index) => (
-            <Skeleton key={index} className="h-[420px] rounded-3xl" />
+            <Skeleton key={index} className="h-[520px] rounded-3xl" />
           ))}
         </div>
       ) : (
         <div className="overflow-x-auto pb-2">
-          <div className="flex min-w-full items-start gap-3">
+          <div className="grid min-w-[1400px] grid-cols-5 items-start gap-3">
             {columns.map((column) => {
               const columnTasks = filteredTasks.filter((task) => task.status === column.key);
-              const isEmpty = columnTasks.length === 0;
 
               return (
-                <Card
-                  key={column.key}
-                  className={cn(
-                    "flex min-h-[520px] flex-col overflow-hidden border-white/8",
-                    isEmpty ? "w-[84px] min-w-[84px] p-2" : "min-w-[280px] flex-1 p-3",
-                  )}
-                >
-                  {isEmpty ? (
-                    <div className="flex h-full min-h-[500px] flex-col items-center justify-between py-2 text-center">
-                      <div className={cn("h-2.5 w-10 rounded-full", column.dotClassName)} />
-                      <div className="flex flex-1 items-center justify-center">
-                        <div className="flex -rotate-180 items-center gap-2 [writing-mode:vertical-rl]">
-                          <span className="text-[11px] font-semibold uppercase tracking-[0.26em] text-slate-400">{column.label}</span>
-                          <Badge className="px-2 py-0.5 text-[10px]">0</Badge>
-                        </div>
-                      </div>
+                <Card key={column.key} className="flex min-h-[520px] min-w-0 flex-col overflow-hidden border-white/8 p-3">
+                  <div className="mb-3 flex items-center justify-between gap-3 rounded-2xl border border-white/6 bg-white/[0.03] px-3 py-2">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span className={cn("size-2.5 rounded-full", column.dotClassName)} />
+                      <p className="truncate text-sm font-semibold text-white">{column.label}</p>
                     </div>
-                  ) : (
-                    <>
-                      <div className="mb-3 flex items-center justify-between gap-3 rounded-2xl border border-white/6 bg-white/[0.03] px-3 py-2">
-                        <div className="flex min-w-0 items-center gap-2">
-                          <span className={cn("size-2.5 rounded-full", column.dotClassName)} />
-                          <p className="truncate text-sm font-semibold text-white">{column.label}</p>
-                        </div>
-                        <Badge className="px-2 py-0.5 text-[10px]">{columnTasks.length}</Badge>
-                      </div>
+                    <Badge className="px-2 py-0.5 text-[10px]">{columnTasks.length}</Badge>
+                  </div>
 
-                      <div className="space-y-2">
-                        {columnTasks.map((task) => {
-                          const agent = (agents ?? []).find((item) => item.agent_id === task.assigned_to);
-                          return <TaskCard key={task.id} task={task} agent={agent} isCompletedColumn={column.key === "completed"} />;
-                        })}
-                      </div>
-                    </>
+                  {columnTasks.length === 0 ? (
+                    <div className="flex flex-1 items-center justify-center text-center text-sm text-slate-600 py-8">No tasks</div>
+                  ) : (
+                    <div className="space-y-2">
+                      {columnTasks.map((task) => {
+                        const agent = (agents ?? []).find((item) => item.agent_id === task.assigned_to);
+                        return <TaskCard key={task.id} task={task} agent={agent} isCompletedColumn={column.key === "completed"} />;
+                      })}
+                    </div>
                   )}
                 </Card>
               );
