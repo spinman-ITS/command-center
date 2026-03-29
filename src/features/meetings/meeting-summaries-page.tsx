@@ -36,13 +36,19 @@ function useMeetingSummaries() {
   });
 }
 
+function toName(item: unknown): string {
+  if (typeof item === "string") return item;
+  if (item && typeof item === "object" && "name" in item) return String((item as Record<string, unknown>).name);
+  return String(item);
+}
+
 function parseJsonArray(value: unknown): string[] {
   if (!value) return [];
-  if (Array.isArray(value)) return value.map(String);
+  if (Array.isArray(value)) return value.map(toName);
   if (typeof value === "string") {
     try {
       const parsed: unknown = JSON.parse(value);
-      if (Array.isArray(parsed)) return parsed.map(String);
+      if (Array.isArray(parsed)) return parsed.map(toName);
     } catch {
       // not JSON
     }
