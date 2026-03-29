@@ -37,9 +37,9 @@ function useDailyBriefs() {
         .order("created_at", { ascending: false })
         .limit(30);
       if (error) throw error;
-      return (data ?? []).map((row) => ({
+      return (data ?? []).map((row: Record<string, unknown>) => ({
         ...row,
-        type: normalizeBriefType(row.type as string),
+        type: normalizeBriefType(typeof row.type === "string" ? row.type : ""),
       })) as DailyBrief[];
     },
   });
