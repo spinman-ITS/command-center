@@ -31,7 +31,7 @@ import {
   CircleAlert,
   ClipboardList,
   Flag,
-  GripVertical,
+
   Layers3,
   Loader2,
   Pencil,
@@ -329,8 +329,8 @@ function DraggableTaskCard({
   };
 
   return (
-    <div ref={setNodeRef} style={style} {...attributes}>
-      <TaskCard task={task} agent={agent} isCompletedColumn={isCompletedColumn} onClick={onClick} dragListeners={listeners} />
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners} className="touch-none">
+      <TaskCard task={task} agent={agent} isCompletedColumn={isCompletedColumn} onClick={onClick} />
     </div>
   );
 }
@@ -343,14 +343,12 @@ function TaskCard({
   isCompletedColumn,
   onClick,
   isDragging,
-  dragListeners,
 }: {
   task: Task;
   agent: Agent | undefined;
   isCompletedColumn: boolean;
   onClick: () => void;
   isDragging?: boolean;
-  dragListeners?: Record<string, unknown>;
 }) {
   const priorityTone = getPriorityTone(task.priority);
   const completedLabel = task.completed_at
@@ -365,15 +363,6 @@ function TaskCard({
       )}
     >
       <div className="flex items-start gap-1">
-        {dragListeners ? (
-          <button
-            type="button"
-            className="mt-0.5 shrink-0 cursor-grab touch-none text-slate-600 opacity-0 transition group-hover:opacity-100 active:cursor-grabbing"
-            {...dragListeners}
-          >
-            <GripVertical className="size-3.5" />
-          </button>
-        ) : null}
         <button type="button" onClick={onClick} className="min-w-0 flex-1 text-left focus-visible:outline-none">
           <div className="flex items-start justify-between gap-3">
             <p className="line-clamp-2 text-sm font-semibold text-white">{task.title}</p>
