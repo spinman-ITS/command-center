@@ -347,9 +347,9 @@ export function DailyBriefsPage() {
         title="Daily Briefs"
         description="Morning and end-of-day operational summaries."
         action={
-          <div className="flex items-center gap-3">
+          <div className="flex max-w-full flex-col gap-3 md:items-end">
             {/* Type filter pills */}
-            <div className="flex gap-1 rounded-xl border border-white/10 bg-white/5 p-1">
+            <div className="flex max-w-full flex-wrap gap-1 rounded-xl border border-white/10 bg-white/5 p-1">
               {typeFilters.map((f) => (
                 <button
                   key={f.value}
@@ -368,14 +368,14 @@ export function DailyBriefsPage() {
             </div>
 
             {/* Search */}
-            <div className="relative">
+            <div className="relative w-full max-w-full md:w-64">
               <Search className="absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-slate-500" />
               <input
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search briefs…"
-                className="h-9 rounded-xl border border-white/10 bg-white/5 pl-9 pr-3 text-xs text-white placeholder:text-slate-500 focus:border-white/20 focus:outline-none focus:ring-1 focus:ring-white/10"
+                className="h-9 w-full max-w-full rounded-xl border border-white/10 bg-white/5 pl-9 pr-3 text-xs text-white placeholder:text-slate-500 focus:border-white/20 focus:outline-none focus:ring-1 focus:ring-white/10"
               />
             </div>
           </div>
