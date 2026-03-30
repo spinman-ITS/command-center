@@ -10,7 +10,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
   DollarSign,
   Zap,
-  Cpu,
+
   Bot,
   TrendingUp,
   AlertTriangle,
@@ -19,8 +19,7 @@ import {
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import {
-  BarChart,
-  Bar,
+
   XAxis,
   YAxis,
   Tooltip as RechartsTooltip,
@@ -175,7 +174,7 @@ function ChartTooltip({ active, payload, label }: { active?: boolean; payload?: 
   return (
     <div className="rounded-xl border border-white/10 bg-slate-900/95 px-3 py-2 shadow-xl backdrop-blur-sm">
       <p className="text-xs text-slate-400">{label}</p>
-      <p className="text-sm font-semibold text-white">{formatCost(payload[0].value)}</p>
+      <p className="text-sm font-semibold text-white">{formatCost(payload?.[0]?.value ?? 0)}</p>
     </div>
   );
 }
@@ -295,14 +294,6 @@ export function UsageCostsPage() {
     (a, b) => b[1].cost - a[1].cost,
   );
 
-  // Most used model
-  const modelCounts = new Map<string, number>();
-  for (const r of rows) {
-    modelCounts.set(r.model, (modelCounts.get(r.model) ?? 0) + 1);
-  }
-  const mostUsedModel =
-    [...modelCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "—";
-
   // Most active agent
   const agentCounts = new Map<string, number>();
   for (const r of rows) {
@@ -310,8 +301,8 @@ export function UsageCostsPage() {
   }
   const mostActiveAgentId = [...agentCounts.entries()].sort(
     (a, b) => b[1] - a[1],
-  )[0]?.[0];
-  const mostActiveAgent = agents.find(
+  )[0]?.[0] ?? '';
+  const mostActiveAgent = agents?.find(
     (a) => a.agent_id === mostActiveAgentId,
   );
 
@@ -374,11 +365,12 @@ export function UsageCostsPage() {
   const dailyChartData = useMemo(() => {
     const dailyCosts = new Map<string, { total: number; byProvider: Record<string, number> }>();
     for (const r of rows) {
-      const date = new Date(r.created_at).toISOString().split("T")[0];
-      const entry = dailyCosts.get(date) ?? { total: 0, byProvider: {} };
+      const date = new Date(r.created_at).toISOString().split("T")[0] ?? "";
+      const entry = dailyCosts.get(date) ?? { total: 0, byProvider: {} as Record<string, number> };
       entry.total += r.estimated_cost ?? 0;
-      entry.byProvider[r.provider] =
-        (entry.byProvider[r.provider] ?? 0) + (r.estimated_cost ?? 0);
+      const prov = r.provider ?? 'unknown';
+      entry.byProvider[prov] =
+        (entry.byProvider[prov] ?? 0) + (r.estimated_cost ?? 0);
       dailyCosts.set(date, entry);
     }
 
@@ -397,11 +389,11 @@ export function UsageCostsPage() {
     }
 
     const result: Array<Record<string, unknown>> = [];
-    const start = new Date(sorted[0] + "T12:00:00");
-    const end = new Date(sorted[sorted.length - 1] + "T12:00:00");
+    const start = new Date((sorted[0] ?? '') + "T12:00:00");
+    const end = new Date((sorted[sorted.length - 1] ?? '') + "T12:00:00");
 
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-      const key = d.toISOString().split("T")[0];
+      const key = d.toISOString().split("T")[0] ?? "";
       const entry = dailyCosts.get(key);
       result.push({
         date: key,
@@ -516,8 +508,8 @@ export function UsageCostsPage() {
               label="Most Active Agent"
               value={
                 mostActiveAgent
-                  ? `${mostActiveAgent.emoji} ${mostActiveAgent.name}`
-                  : mostActiveAgentId ?? "—"
+                  ? `${mostActiveAgent?.emoji ?? ''} ${mostActiveAgent?.name ?? ''}`
+                  : (mostActiveAgentId || "—") as string
               }
               detail={`${agentCounts.get(mostActiveAgentId ?? "") ?? 0} requests`}
               icon={<Bot className="size-5" />}
