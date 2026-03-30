@@ -5,18 +5,21 @@ import { Card } from "@/shared/components/ui/card";
 import { ErrorState } from "@/shared/components/error-state";
 import { SectionHeader } from "@/shared/components/ui/section-header";
 import { Skeleton } from "@/shared/components/ui/skeleton";
+import { useRealtimeInvalidation } from "@/shared/hooks/use-realtime-invalidation";
 import { cn, formatRelativeTime } from "@/shared/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import {
   DollarSign,
   Zap,
-
   Bot,
   TrendingUp,
   AlertTriangle,
   ShieldAlert,
   Filter,
+  Gauge,
+  TimerReset,
 } from "lucide-react";
+import type { ReactNode } from "react";
 import { useMemo, useState } from "react";
 import {
 
@@ -62,6 +65,8 @@ function getRangeStart(range: TimeRange): string | null {
 // ── Data hook ───────────────────────────────────────────────────────
 
 function useUsageTracking(range: TimeRange) {
+  useRealtimeInvalidation([{ table: "usage_tracking", queryKey: "usage-tracking" }]);
+
   return useQuery({
     queryKey: ["usage-tracking", range],
     queryFn: async () => {
@@ -94,7 +99,29 @@ function formatTokens(value: number): string {
   if (value >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(1)}B`;
   if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
   if (value >= 1_000) return `${(value / 1_000).toFixed(1)}K`;
-  return String(value);
+  return String(Math.round(value));
+}
+
+function getElapsedDayFraction(now: Date) {
+  return Math.max((now.getHours() * 60 + now.getMinutes()) / (24 * 60), 1 / (24 * 60));
+}
+
+function getElapsedMonthFraction(now: Date) {
+  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  return Math.max(((now.getDate() - 1) + getElapsedDayFraction(now)) / daysInMonth, 1 / daysInMonth);
+}
+
+function getThresholdLevel(percent: number): "ok" | "warning" | "danger" {
+  if (percent >= 90) return "danger";
+  if (percent >= 70) return "warning";
+  return "ok";
+}
+
+function formatDurationFromDays(days: number): string {
+  if (!Number.isFinite(days) || days <= 0) return "Cap imminent";
+  if (days < 1) return `${Math.max(Math.round(days * 24), 1)}h`;
+  if (days < 30) return `${Math.round(days)}d`;
+  return `${(days / 30).toFixed(1)}mo`;
 }
 
 // ── Provider config ─────────────────────────────────────────────────
@@ -102,6 +129,7 @@ function formatTokens(value: number): string {
 const PROVIDER_CONFIG: Record<string, { color: string; label: string; icon: string }> = {
   anthropic: { color: "#f97316", label: "Anthropic", icon: "🅰️" },
   openai: { color: "#22c55e", label: "OpenAI", icon: "🟢" },
+  "openai-codex": { color: "#22c55e", label: "OpenAI Codex", icon: "🟢" },
   google: { color: "#3b82f6", label: "Google", icon: "🔵" },
   gemini: { color: "#3b82f6", label: "Google", icon: "🔵" },
   xai: { color: "#a3a3a3", label: "xAI", icon: "✖️" },
@@ -115,6 +143,141 @@ function getProviderConfig(name: string) {
       label: name,
       icon: "⬜",
     }
+  );
+}
+
+const SUBSCRIPTION_CAPACITY = {
+  anthropic: {
+    label: "Claude Max",
+    provider: "anthropic",
+    dailyCapacityTokens: 40_000_000,
+    monthlyCapacityTokens: 1_200_000_000,
+    accent: "#f97316",
+  },
+  "openai-codex": {
+    label: "GPT Pro",
+    provider: "openai-codex",
+    dailyCapacityTokens: 20_000_000,
+    monthlyCapacityTokens: 600_000_000,
+    accent: "#22c55e",
+  },
+} as const;
+
+type SubscriptionMetric = {
+  key: keyof typeof SUBSCRIPTION_CAPACITY;
+  label: string;
+  provider: string;
+  accent: string;
+  dailyUsedTokens: number;
+  monthlyUsedTokens: number;
+  dailyCapacityTokens: number;
+  monthlyCapacityTokens: number;
+  dailyUsedPercent: number;
+  monthlyUsedPercent: number;
+  dailyBurnRateTokens: number;
+  monthlyBurnRateTokens: number;
+  projectedDailyTokens: number;
+  projectedMonthlyTokens: number;
+  projectedTimeToDailyCap: string;
+  projectedTimeToMonthlyCap: string;
+  threshold: "ok" | "warning" | "danger";
+};
+
+function SubscriptionCapacityCard({ metric }: { metric: SubscriptionMetric }) {
+  const gaugeTone = metric.threshold === "danger"
+    ? "bg-rose-400"
+    : metric.threshold === "warning"
+      ? "bg-amber-400"
+      : "bg-emerald-400";
+
+  return (
+    <Card className="overflow-hidden p-5">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Subscription capacity</p>
+          <h3 className="mt-2 text-xl font-semibold text-white">{metric.label}</h3>
+          <p className="mt-1 text-sm text-slate-400">Provider: {metric.provider}</p>
+        </div>
+        <Badge tone={metric.threshold === "danger" ? "danger" : metric.threshold === "warning" ? "warning" : "success"}>
+          {Math.max(metric.dailyUsedPercent, metric.monthlyUsedPercent).toFixed(0)}%
+        </Badge>
+      </div>
+
+      <div className="mt-5 space-y-4">
+        <GaugeBar
+          label="Daily capacity"
+          value={metric.dailyUsedTokens}
+          capacity={metric.dailyCapacityTokens}
+          percent={metric.dailyUsedPercent}
+          accent={metric.accent}
+          toneClassName={gaugeTone}
+        />
+        <GaugeBar
+          label="Monthly capacity"
+          value={metric.monthlyUsedTokens}
+          capacity={metric.monthlyCapacityTokens}
+          percent={metric.monthlyUsedPercent}
+          accent={metric.accent}
+          toneClassName={gaugeTone}
+        />
+      </div>
+
+      <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <MiniMetric icon={<Zap className="size-4" />} label="Burn rate / day" value={`${formatTokens(metric.dailyBurnRateTokens)} tok`} />
+        <MiniMetric icon={<TrendingUp className="size-4" />} label="Projected month" value={`${formatTokens(metric.projectedMonthlyTokens)} tok`} />
+        <MiniMetric icon={<TimerReset className="size-4" />} label="Time to day cap" value={metric.projectedTimeToDailyCap} />
+        <MiniMetric icon={<Gauge className="size-4" />} label="Time to month cap" value={metric.projectedTimeToMonthlyCap} />
+      </div>
+    </Card>
+  );
+}
+
+function GaugeBar({
+  label,
+  value,
+  capacity,
+  percent,
+  accent,
+  toneClassName,
+}: {
+  label: string;
+  value: number;
+  capacity: number;
+  percent: number;
+  accent: string;
+  toneClassName: string;
+}) {
+  return (
+    <div>
+      <div className="mb-2 flex items-center justify-between gap-3 text-sm">
+        <p className="text-slate-300">{label}</p>
+        <p className="text-slate-400">{formatTokens(value)} / {formatTokens(capacity)} tokens</p>
+      </div>
+      <div className="relative h-3 overflow-hidden rounded-full bg-white/8">
+        <div className="absolute inset-y-0 left-[70%] w-px bg-amber-300/70" />
+        <div className="absolute inset-y-0 left-[90%] w-px bg-rose-300/80" />
+        <div
+          className={cn("h-full rounded-full transition-all duration-500", toneClassName)}
+          style={{ width: `${Math.min(percent, 100)}%`, boxShadow: `0 0 20px ${accent}55` }}
+        />
+      </div>
+      <div className="mt-1 flex items-center justify-between text-[11px] text-slate-500">
+        <span>{percent.toFixed(1)}% used</span>
+        <span>Warn at 70% / 90%</span>
+      </div>
+    </div>
+  );
+}
+
+function MiniMetric({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
+  return (
+    <div className="rounded-2xl border border-white/8 bg-white/[0.03] p-3">
+      <div className="flex items-center gap-2 text-slate-400">
+        {icon}
+        <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500">{label}</p>
+      </div>
+      <p className="mt-2 text-sm font-medium text-white">{value}</p>
+    </div>
   );
 }
 
@@ -416,6 +579,56 @@ export function UsageCostsPage() {
         dailyChartData.length
       : 0;
 
+  const subscriptionMetrics = useMemo(() => {
+    const now = new Date();
+    const dayStart = new Date(now);
+    dayStart.setHours(0, 0, 0, 0);
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const dayElapsed = getElapsedDayFraction(now);
+    const monthElapsed = getElapsedMonthFraction(now);
+
+    return Object.entries(SUBSCRIPTION_CAPACITY).map(([key, config]) => {
+      const providerRows = allRows.filter((row) => row.provider.toLowerCase() === config.provider.toLowerCase());
+      const dailyUsedTokens = providerRows
+        .filter((row) => new Date(row.created_at) >= dayStart)
+        .reduce((sum, row) => sum + (row.input_tokens ?? 0) + (row.output_tokens ?? 0), 0);
+      const monthlyUsedTokens = providerRows
+        .filter((row) => new Date(row.created_at) >= monthStart)
+        .reduce((sum, row) => sum + (row.input_tokens ?? 0) + (row.output_tokens ?? 0), 0);
+
+      const dailyBurnRateTokens = dailyUsedTokens / dayElapsed;
+      const monthlyBurnRateTokens = monthlyUsedTokens / monthElapsed;
+      const dailyUsedPercent = (dailyUsedTokens / config.dailyCapacityTokens) * 100;
+      const monthlyUsedPercent = (monthlyUsedTokens / config.monthlyCapacityTokens) * 100;
+      const projectedTimeToDailyCap = dailyBurnRateTokens > 0
+        ? formatDurationFromDays((config.dailyCapacityTokens - dailyUsedTokens) / dailyBurnRateTokens)
+        : "No burn yet";
+      const projectedTimeToMonthlyCap = monthlyBurnRateTokens > 0
+        ? formatDurationFromDays((config.monthlyCapacityTokens - monthlyUsedTokens) / monthlyBurnRateTokens)
+        : "No burn yet";
+
+      return {
+        key: key as keyof typeof SUBSCRIPTION_CAPACITY,
+        label: config.label,
+        provider: config.provider,
+        accent: config.accent,
+        dailyUsedTokens,
+        monthlyUsedTokens,
+        dailyCapacityTokens: config.dailyCapacityTokens,
+        monthlyCapacityTokens: config.monthlyCapacityTokens,
+        dailyUsedPercent,
+        monthlyUsedPercent,
+        dailyBurnRateTokens,
+        monthlyBurnRateTokens,
+        projectedDailyTokens: dailyBurnRateTokens,
+        projectedMonthlyTokens: monthlyBurnRateTokens,
+        projectedTimeToDailyCap,
+        projectedTimeToMonthlyCap,
+        threshold: getThresholdLevel(Math.max(dailyUsedPercent, monthlyUsedPercent)),
+      } satisfies SubscriptionMetric;
+    });
+  }, [allRows]);
+
   const isLoading = usageQuery.isLoading;
 
   return (
@@ -465,6 +678,22 @@ export function UsageCostsPage() {
           </div>
         }
       />
+
+      {/* Subscription capacity */}
+      <section className="space-y-4">
+        <div>
+          <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Subscription tracking</p>
+          <h2 className="mt-2 text-xl font-semibold text-white">Claude Max & GPT Pro capacity</h2>
+          <p className="mt-2 max-w-3xl text-sm text-slate-400">
+            Estimated token envelopes from <code className="rounded bg-white/5 px-1.5 py-0.5 text-slate-300">usage_tracking</code>, with daily/monthly burn rate and projected time to cap.
+          </p>
+        </div>
+        <div className="grid gap-4 xl:grid-cols-2">
+          {isLoading
+            ? Array.from({ length: 2 }).map((_, i) => <Skeleton key={i} className="h-[320px] rounded-3xl" />)
+            : subscriptionMetrics.map((metric) => <SubscriptionCapacityCard key={metric.key} metric={metric} />)}
+        </div>
+      </section>
 
       {/* Budget warning banner */}
       {range === "month" && budget.level !== "ok" && (
