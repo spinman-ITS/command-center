@@ -11,18 +11,20 @@ import type { CSSProperties, ReactNode } from "react";
 
 const departments = [
   { name: "Engineering", icon: "⚙️", agents: ["luka", "dash"] },
-  { name: "Research & Intelligence", icon: "🔍", agents: ["lucy", "max"] },
-  { name: "Content & Design", icon: "🎨", agents: ["sage", "pixel"] },
+  { name: "Operations", icon: "⚡", agents: ["jett", "max", "scout"] },
+  { name: "Content & Research", icon: "🧠", agents: ["lucy", "sage", "pixel"] },
 ] as const;
 
 const agentCapabilities: Record<string, string[]> = {
-  atlas: ["Agent coordination & management", "Morning & EOD briefs", "Integration management", "Sprint planning", "Notion task management"],
-  luka: ["Witkit frontend development", "Chrome SOP recorder extension", "Syncro integration", "TipTap rich text editor", "Supabase Edge Functions"],
-  dash: ["Command Center dashboard", "Real-time Supabase subscriptions", "Charts & data visualization", "Dark mode UI design"],
-  lucy: ["Daily research briefs (2 AM)", "Trending pulse (4x daily)", "AI governance research", "n8n workflow research", "Market & competitor analysis"],
-  max: ["Ticket intelligence (every 15 min)", "Syncro + Huntress + CIPP monitoring", "KB article matching", "Security incident alerting"],
-  sage: ["Blog posts (Authority Framework)", "Social media captions", "Prospect emails", "AI governance documents", "LinkedIn newsletters"],
-  pixel: ["Featured blog images", "Social media graphics", "Newsletter cover images", "Brand style: photorealistic + holographic"],
+  atlas: ["Agent coordination & management", "Morning & EOD briefs", "Integration management", "Sprint planning", "Task orchestration"],
+  jett: ["Operations dispatch", "Queue triage", "Cross-agent handoffs", "Command routing", "Runbook execution"],
+  luka: ["MSP Pub development", "Frontend implementation", "Supabase integration", "UI systems", "Feature shipping"],
+  dash: ["Command Center dashboard", "Real-time Supabase subscriptions", "Charts & data visualization", "Dark mode UI design", "Frontend polish"],
+  scout: ["QA coverage", "Regression testing", "Release verification", "Bug reproduction", "Acceptance validation"],
+  max: ["L3 technical support", "Escalation handling", "Incident triage", "System troubleshooting", "Support intelligence"],
+  lucy: ["Research briefs", "Trend analysis", "Competitive intelligence", "AI tooling research", "Strategic synthesis"],
+  sage: ["Content strategy", "Messaging frameworks", "Campaign copy", "Editorial planning", "SEO content"],
+  pixel: ["Image design", "Visual concepts", "Marketing creative", "Brand aesthetics", "Graphic production"],
 };
 
 const founder = {
@@ -37,7 +39,7 @@ const atlasFallback: Agent = {
   name: "Atlas",
   role: "Chief of Staff",
   model: "Claude Opus 4",
-  color: "#f59e0b",
+  color: "#16a34a",
   emoji: "🏛️",
   workspace: "",
   status: "ACTIVE",
