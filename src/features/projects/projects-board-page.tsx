@@ -1,5 +1,4 @@
 import { useAgentsQuery, useTasksQuery } from "@/shared/hooks/use-command-center-data";
-import { supabase } from "@/integrations/supabase/client";
 import { ErrorState } from "@/shared/components/error-state";
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
@@ -10,11 +9,10 @@ import { Select } from "@/shared/components/ui/select";
 import { Skeleton } from "@/shared/components/ui/skeleton";
 import { Textarea } from "@/shared/components/ui/textarea";
 import { showToast as toast } from "@/shared/components/ui/toast";
-import { useRealtimeInvalidation } from "@/shared/hooks/use-realtime-invalidation";
 import { cn } from "@/shared/lib/utils";
 import { createTask, deleteTask, updateTask, type CreateTaskInput } from "@/shared/lib/data";
-import type { ActivityItem, Agent, QaResults, Task, TaskStatus } from "@/shared/types/models";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import type { Agent, QaResults, Task, TaskStatus } from "@/shared/types/models";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   DndContext,
   DragOverlay,
@@ -61,34 +59,11 @@ const columns: Array<{ key: TaskStatus; label: string; dotClassName: string }> =
 ];
 
 const STATUS_OPTIONS: TaskStatus[] = ["backlog", "up_next", "in_progress", "qa", "blocked", "review", "completed"];
-const ACTIVE_AGENT_WINDOW_MS = 5 * 60 * 1000;
-
-function useRecentAgentActivity() {
-  useRealtimeInvalidation([{ table: "agent_activity", queryKey: "recent-agent-activity", exactKey: ["recent-agent-activity"] }]);
-
-  return useQuery({
-    queryKey: ["recent-agent-activity"],
-    queryFn: async () => {
-      if (!supabase) return [] as ActivityItem[];
-      const since = new Date(Date.now() - ACTIVE_AGENT_WINDOW_MS).toISOString();
-      const { data, error } = await supabase
-        .from("agent_activity")
-        .select("id, agent_id, action, details, metadata, created_at")
-        .gte("created_at", since)
-        .order("created_at", { ascending: false });
-
-      if (error) throw error;
-      return (data ?? []) as ActivityItem[];
-    },
-    refetchInterval: 60_000,
-  });
-}
 
 export function ProjectsBoardPage() {
   const { name } = useParams();
   const tasksQuery = useTasksQuery();
   const agentsQuery = useAgentsQuery();
-  const activityQuery = useRecentAgentActivity();
   const queryClient = useQueryClient();
   const [agentFilter, setAgentFilter] = useState("all");
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
@@ -125,20 +100,6 @@ export function ProjectsBoardPage() {
     [filteredTasks, activeTaskId],
   );
 
-  const activeAgentsByTaskId = useMemo(() => {
-    const recentActivity = activityQuery.data ?? [];
-    const recentAgentIds = new Set(
-      recentActivity
-        .filter((item) => Date.now() - new Date(item.created_at).getTime() <= ACTIVE_AGENT_WINDOW_MS)
-        .map((item) => item.agent_id),
-    );
-
-    return new Set(
-      filteredTasks
-        .filter((task) => task.status === "in_progress" && Boolean(task.assigned_to) && recentAgentIds.has(task.assigned_to))
-        .map((task) => task.id),
-    );
-  }, [activityQuery.data, filteredTasks]);
 
   useEffect(() => {
     if (!selectedTaskId) return;
@@ -259,7 +220,6 @@ export function ProjectsBoardPage() {
                       column={column}
                       tasks={columnTasks}
                       agents={agents ?? []}
-                      activeTaskIds={activeAgentsByTaskId}
                       onTaskClick={setSelectedTaskId}
                       isOver={activeTaskId !== null}
                     />
@@ -274,7 +234,7 @@ export function ProjectsBoardPage() {
                   <TaskCard
                     task={activeTask}
                     agent={(agents ?? []).find((a) => a.agent_id === activeTask.assigned_to)}
-                    isActive={activeAgentsByTaskId.has(activeTask.id)}
+                    isActive={activeTask.status === "in_progress" || activeTask.status === "qa"}
                     isCompletedColumn={activeTask.status === "completed"}
                     onClick={() => {}}
                     isDragging
@@ -313,14 +273,12 @@ function KanbanColumn({
   column,
   tasks: columnTasks,
   agents,
-  activeTaskIds,
   onTaskClick,
   isOver: hasDragActive,
 }: {
   column: (typeof columns)[number];
   tasks: Task[];
   agents: Agent[];
-  activeTaskIds: Set<string>;
   onTaskClick: (id: string) => void;
   isOver: boolean;
 }) {
@@ -359,7 +317,7 @@ function KanbanColumn({
                 key={task.id}
                 task={task}
                 agent={agent}
-                isActive={activeTaskIds.has(task.id)}
+                isActive={task.status === "in_progress" || task.status === "qa"}
                 isCompletedColumn={column.key === "completed"}
                 onClick={() => onTaskClick(task.id)}
               />
