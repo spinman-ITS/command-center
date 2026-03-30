@@ -1,20 +1,41 @@
 import { supabase } from "@/integrations/supabase/client";
 import { useAgentsQuery } from "@/shared/hooks/use-command-center-data";
+import { Badge } from "@/shared/components/ui/badge";
 import { Card } from "@/shared/components/ui/card";
 import { ErrorState } from "@/shared/components/error-state";
 import { SectionHeader } from "@/shared/components/ui/section-header";
 import { Skeleton } from "@/shared/components/ui/skeleton";
 import { cn, formatRelativeTime } from "@/shared/lib/utils";
 import { useQuery } from "@tanstack/react-query";
-import { DollarSign, Zap, Cpu, Bot } from "lucide-react";
-import { useState } from "react";
+import {
+  DollarSign,
+  Zap,
+  Cpu,
+  Bot,
+  TrendingUp,
+  AlertTriangle,
+  ShieldAlert,
+  Filter,
+} from "lucide-react";
+import { useMemo, useState } from "react";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip as RechartsTooltip,
+  ResponsiveContainer,
+  CartesianGrid,
+  Area,
+  AreaChart,
+} from "recharts";
 
 // ── Types ───────────────────────────────────────────────────────────
 
 interface UsageRow {
   id: string;
   agent_id: string;
-  provider: string; // Added provider field
+  provider: string;
   model: string;
   input_tokens: number;
   output_tokens: number;
@@ -77,20 +98,85 @@ function formatTokens(value: number): string {
   return String(value);
 }
 
+// ── Provider config ─────────────────────────────────────────────────
+
+const PROVIDER_CONFIG: Record<string, { color: string; label: string; icon: string }> = {
+  anthropic: { color: "#f97316", label: "Anthropic", icon: "🅰️" },
+  openai: { color: "#22c55e", label: "OpenAI", icon: "🟢" },
+  google: { color: "#3b82f6", label: "Google", icon: "🔵" },
+  gemini: { color: "#3b82f6", label: "Google", icon: "🔵" },
+  xai: { color: "#a3a3a3", label: "xAI", icon: "✖️" },
+  openrouter: { color: "#a855f7", label: "OpenRouter", icon: "🔀" },
+};
+
+function getProviderConfig(name: string) {
+  return (
+    PROVIDER_CONFIG[name.toLowerCase()] ?? {
+      color: "#6b7280",
+      label: name,
+      icon: "⬜",
+    }
+  );
+}
+
+// ── Budget thresholds ───────────────────────────────────────────────
+
+const BUDGET_MONTHLY = 100; // $100/month budget
+const BUDGET_WARN = 0.7; // 70% = warning
+const BUDGET_DANGER = 0.9; // 90% = danger
+
+function getBudgetStatus(cost: number): { level: "ok" | "warning" | "danger" | "over"; pct: number } {
+  const pct = cost / BUDGET_MONTHLY;
+  if (pct >= 1) return { level: "over", pct };
+  if (pct >= BUDGET_DANGER) return { level: "danger", pct };
+  if (pct >= BUDGET_WARN) return { level: "warning", pct };
+  return { level: "ok", pct };
+}
+
 // ── Stat card ───────────────────────────────────────────────────────
 
-function StatCard({ label, value, detail, icon }: { label: string; value: string; detail: string; icon: React.ReactNode }) {
+function StatCard({
+  label,
+  value,
+  detail,
+  icon,
+  accent,
+}: {
+  label: string;
+  value: string;
+  detail: string;
+  icon: React.ReactNode;
+  accent?: string;
+}) {
   return (
     <Card className="p-5">
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-xs uppercase tracking-[0.28em] text-slate-500">{label}</p>
-          <p className="mt-2 text-2xl font-semibold text-white">{value}</p>
+          <p className="text-xs uppercase tracking-[0.28em] text-slate-500">
+            {label}
+          </p>
+          <p className={cn("mt-2 text-2xl font-semibold", accent ?? "text-white")}>
+            {value}
+          </p>
           <p className="mt-1 text-sm text-slate-400">{detail}</p>
         </div>
-        <div className="flex size-10 items-center justify-center rounded-2xl bg-white/6 text-slate-300">{icon}</div>
+        <div className="flex size-10 items-center justify-center rounded-2xl bg-white/6 text-slate-300">
+          {icon}
+        </div>
       </div>
     </Card>
+  );
+}
+
+// ── Custom chart tooltip ────────────────────────────────────────────
+
+function ChartTooltip({ active, payload, label }: { active?: boolean; payload?: Array<{ value: number }>; label?: string }) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="rounded-xl border border-white/10 bg-slate-900/95 px-3 py-2 shadow-xl backdrop-blur-sm">
+      <p className="text-xs text-slate-400">{label}</p>
+      <p className="text-sm font-semibold text-white">{formatCost(payload[0].value)}</p>
+    </div>
   );
 }
 
@@ -98,34 +184,83 @@ function StatCard({ label, value, detail, icon }: { label: string; value: string
 
 const RANGE_OPTIONS: { value: TimeRange; label: string }[] = [
   { value: "today", label: "Today" },
-  { value: "week", label: "This Week" },
-  { value: "month", label: "This Month" },
+  { value: "week", label: "7 Days" },
+  { value: "month", label: "30 Days" },
   { value: "all", label: "All Time" },
 ];
 
 export function UsageCostsPage() {
   const [range, setRange] = useState<TimeRange>("month");
+  const [providerFilter, setProviderFilter] = useState<string>("all");
   const usageQuery = useUsageTracking(range);
   const agentsQuery = useAgentsQuery();
 
   if (usageQuery.isError) {
-    return <ErrorState title="Usage data unavailable" description="Failed to load usage tracking data from Supabase." />;
+    return (
+      <ErrorState
+        title="Usage data unavailable"
+        description="Failed to load usage tracking data from Supabase."
+      />
+    );
   }
 
-  const rows = usageQuery.data ?? [];
+  const allRows = usageQuery.data ?? [];
   const agents = agentsQuery.data ?? [];
+
+  // Apply provider filter
+  const rows =
+    providerFilter === "all"
+      ? allRows
+      : allRows.filter(
+          (r) => r.provider.toLowerCase() === providerFilter.toLowerCase(),
+        );
+
+  // Unique providers for filter dropdown
+  const uniqueProviders = useMemo(() => {
+    const set = new Set(allRows.map((r) => r.provider));
+    return [...set].sort();
+  }, [allRows]);
 
   // ── Computed aggregates ─────────────────────────────────────────
 
-  const totalCost = rows.reduce((sum, r) => sum + (r.estimated_cost ?? 0), 0);
-  const totalTokens = rows.reduce((sum, r) => sum + (r.input_tokens ?? 0) + (r.output_tokens ?? 0), 0);
+  const totalCost = rows.reduce(
+    (sum, r) => sum + (r.estimated_cost ?? 0),
+    0,
+  );
+  const totalTokens = rows.reduce(
+    (sum, r) => sum + (r.input_tokens ?? 0) + (r.output_tokens ?? 0),
+    0,
+  );
+  const totalInputTokens = rows.reduce(
+    (sum, r) => sum + (r.input_tokens ?? 0),
+    0,
+  );
+  const totalOutputTokens = rows.reduce(
+    (sum, r) => sum + (r.output_tokens ?? 0),
+    0,
+  );
+
+  // Budget status (based on unfiltered monthly data for accuracy)
+  const monthlyTotalCost = allRows.reduce(
+    (sum, r) => sum + (r.estimated_cost ?? 0),
+    0,
+  );
+  const budget = getBudgetStatus(range === "month" ? monthlyTotalCost : totalCost);
 
   // Per-provider breakdown
   const providerMap = new Map<
     string,
-    { tokens: number; cost: number; requests: number; topModel: string; modelCounts: Map<string, number> }
+    {
+      tokens: number;
+      cost: number;
+      requests: number;
+      inputTokens: number;
+      outputTokens: number;
+      topModel: string;
+      modelCounts: Map<string, number>;
+    }
   >();
-  for (const r of rows) {
+  for (const r of allRows) {
     const prev = providerMap.get(r.provider);
     const tokens = (r.input_tokens ?? 0) + (r.output_tokens ?? 0);
     if (!prev) {
@@ -133,6 +268,8 @@ export function UsageCostsPage() {
         tokens,
         cost: r.estimated_cost ?? 0,
         requests: 1,
+        inputTokens: r.input_tokens ?? 0,
+        outputTokens: r.output_tokens ?? 0,
         topModel: r.model,
         modelCounts: new Map([[r.model, 1]]),
       });
@@ -140,49 +277,64 @@ export function UsageCostsPage() {
       prev.tokens += tokens;
       prev.cost += r.estimated_cost ?? 0;
       prev.requests += 1;
-      prev.modelCounts.set(r.model, (prev.modelCounts.get(r.model) ?? 0) + 1);
-      // Update top model for provider
-      if ((prev.modelCounts.get(r.model) ?? 0) > (prev.modelCounts.get(prev.topModel) ?? 0)) {
+      prev.inputTokens += r.input_tokens ?? 0;
+      prev.outputTokens += r.output_tokens ?? 0;
+      prev.modelCounts.set(
+        r.model,
+        (prev.modelCounts.get(r.model) ?? 0) + 1,
+      );
+      if (
+        (prev.modelCounts.get(r.model) ?? 0) >
+        (prev.modelCounts.get(prev.topModel) ?? 0)
+      ) {
         prev.topModel = r.model;
       }
     }
   }
-  const sortedProviders = [...providerMap.entries()].sort((a, b) => b[1].cost - a[1].cost);
-
-  const providerColors: Record<string, string> = {
-    anthropic: "#f97316", // orange
-    openai: "#22c55e", // green
-    google: "#3b82f6", // blue
-    gemini: "#3b82f6", // blue (alias for google)
-    xai: "#6b7280", // gray
-    openrouter: "#a855f7", // purple
-  };
+  const sortedProviders = [...providerMap.entries()].sort(
+    (a, b) => b[1].cost - a[1].cost,
+  );
 
   // Most used model
   const modelCounts = new Map<string, number>();
   for (const r of rows) {
     modelCounts.set(r.model, (modelCounts.get(r.model) ?? 0) + 1);
   }
-  const mostUsedModel = [...modelCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "—";
+  const mostUsedModel =
+    [...modelCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "—";
 
   // Most active agent
   const agentCounts = new Map<string, number>();
   for (const r of rows) {
     agentCounts.set(r.agent_id, (agentCounts.get(r.agent_id) ?? 0) + 1);
   }
-  const mostActiveAgentId = [...agentCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
-  const mostActiveAgent = agents.find((a) => a.agent_id === mostActiveAgentId);
+  const mostActiveAgentId = [...agentCounts.entries()].sort(
+    (a, b) => b[1] - a[1],
+  )[0]?.[0];
+  const mostActiveAgent = agents.find(
+    (a) => a.agent_id === mostActiveAgentId,
+  );
 
   // Per-agent breakdown
-  const agentMap = new Map<string, { tokens: number; cost: number; model: string; lastActive: string }>();
+  const agentMap = new Map<
+    string,
+    { tokens: number; cost: number; model: string; lastActive: string; requests: number }
+  >();
   for (const r of rows) {
     const prev = agentMap.get(r.agent_id);
     const tokens = (r.input_tokens ?? 0) + (r.output_tokens ?? 0);
     if (!prev) {
-      agentMap.set(r.agent_id, { tokens, cost: r.estimated_cost ?? 0, model: r.model, lastActive: r.created_at });
+      agentMap.set(r.agent_id, {
+        tokens,
+        cost: r.estimated_cost ?? 0,
+        model: r.model,
+        lastActive: r.created_at,
+        requests: 1,
+      });
     } else {
       prev.tokens += tokens;
       prev.cost += r.estimated_cost ?? 0;
+      prev.requests += 1;
       if (r.created_at > prev.lastActive) {
         prev.lastActive = r.created_at;
         prev.model = r.model;
@@ -191,30 +343,86 @@ export function UsageCostsPage() {
   }
 
   // Per-model breakdown
-  const modelMap = new Map<string, { tokens: number; cost: number; requests: number }>();
+  const modelMap = new Map<
+    string,
+    { tokens: number; cost: number; requests: number; provider: string }
+  >();
   for (const r of rows) {
     const prev = modelMap.get(r.model);
     const tokens = (r.input_tokens ?? 0) + (r.output_tokens ?? 0);
     if (!prev) {
-      modelMap.set(r.model, { tokens, cost: r.estimated_cost ?? 0, requests: 1 });
+      modelMap.set(r.model, {
+        tokens,
+        cost: r.estimated_cost ?? 0,
+        requests: 1,
+        provider: r.provider,
+      });
     } else {
       prev.tokens += tokens;
       prev.cost += r.estimated_cost ?? 0;
       prev.requests += 1;
     }
   }
-  const sortedModels = [...modelMap.entries()].sort((a, b) => b[1].cost - a[1].cost);
-  const sortedAgents = [...agentMap.entries()].sort((a, b) => b[1].cost - a[1].cost);
+  const sortedModels = [...modelMap.entries()].sort(
+    (a, b) => b[1].cost - a[1].cost,
+  );
+  const sortedAgents = [...agentMap.entries()].sort(
+    (a, b) => b[1].cost - a[1].cost,
+  );
 
-  // Daily cost breakdown
-  const dailyCosts = new Map<string, number>();
-  for (const r of rows) {
-    const date = new Date(r.created_at).toISOString().split("T")[0];
-    dailyCosts.set(date, (dailyCosts.get(date) ?? 0) + r.estimated_cost);
-  }
+  // Daily cost breakdown for chart
+  const dailyChartData = useMemo(() => {
+    const dailyCosts = new Map<string, { total: number; byProvider: Record<string, number> }>();
+    for (const r of rows) {
+      const date = new Date(r.created_at).toISOString().split("T")[0];
+      const entry = dailyCosts.get(date) ?? { total: 0, byProvider: {} };
+      entry.total += r.estimated_cost ?? 0;
+      entry.byProvider[r.provider] =
+        (entry.byProvider[r.provider] ?? 0) + (r.estimated_cost ?? 0);
+      dailyCosts.set(date, entry);
+    }
 
-  const sortedDailyCosts = [...dailyCosts.entries()].sort((a, b) => a[0].localeCompare(b[0]));
-  const maxDailyCost = Math.max(...sortedDailyCosts.map(([, cost]) => cost), 0);
+    // Fill in missing days for smoother chart
+    const sorted = [...dailyCosts.keys()].sort();
+    if (sorted.length < 2) {
+      return sorted.map((date) => ({
+        date,
+        label: new Date(date + "T12:00:00").toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+        }),
+        total: dailyCosts.get(date)!.total,
+        ...dailyCosts.get(date)!.byProvider,
+      }));
+    }
+
+    const result: Array<Record<string, unknown>> = [];
+    const start = new Date(sorted[0] + "T12:00:00");
+    const end = new Date(sorted[sorted.length - 1] + "T12:00:00");
+
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      const key = d.toISOString().split("T")[0];
+      const entry = dailyCosts.get(key);
+      result.push({
+        date: key,
+        label: d.toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+        }),
+        total: entry?.total ?? 0,
+        ...(entry?.byProvider ?? {}),
+      });
+    }
+
+    return result;
+  }, [rows]);
+
+  // Average daily cost
+  const avgDailyCost =
+    dailyChartData.length > 0
+      ? dailyChartData.reduce((s, d) => s + (d.total as number), 0) /
+        dailyChartData.length
+      : 0;
 
   const isLoading = usageQuery.isLoading;
 
@@ -223,46 +431,94 @@ export function UsageCostsPage() {
       <SectionHeader
         eyebrow="Analytics"
         title="Usage & Costs"
-        description="Model usage tracking and cost breakdown"
+        description="Model usage tracking, cost breakdown, and budget monitoring"
         action={
-          <div className="flex gap-1 rounded-2xl border border-white/10 bg-white/5 p-1">
-            {RANGE_OPTIONS.map((opt) => (
-              <button
-                key={opt.value}
-                type="button"
-                onClick={() => setRange(opt.value)}
-                className={cn(
-                  "rounded-xl px-3 py-1.5 text-xs uppercase tracking-[0.2em] transition",
-                  range === opt.value
-                    ? "bg-white/10 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]"
-                    : "text-slate-400 hover:text-white",
-                )}
-              >
-                {opt.label}
-              </button>
-            ))}
+          <div className="flex items-center gap-3">
+            {/* Provider filter */}
+            {uniqueProviders.length > 1 && (
+              <div className="flex items-center gap-2">
+                <Filter className="size-3.5 text-slate-500" />
+                <select
+                  value={providerFilter}
+                  onChange={(e) => setProviderFilter(e.target.value)}
+                  className="appearance-none rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-xs uppercase tracking-[0.15em] text-slate-300 outline-none transition focus:border-sky-400/50"
+                >
+                  <option value="all">All Providers</option>
+                  {uniqueProviders.map((p) => (
+                    <option key={p} value={p}>
+                      {getProviderConfig(p).label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            {/* Time range toggle */}
+            <div className="flex gap-1 rounded-2xl border border-white/10 bg-white/5 p-1">
+              {RANGE_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setRange(opt.value)}
+                  className={cn(
+                    "rounded-xl px-3 py-1.5 text-xs uppercase tracking-[0.2em] transition",
+                    range === opt.value
+                      ? "bg-white/10 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]"
+                      : "text-slate-400 hover:text-white",
+                  )}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
           </div>
         }
       />
 
-      {totalCost > 50 && (
-        <div className="rounded-xl border border-yellow-500/30 bg-yellow-500/10 p-4 text-sm text-yellow-200">
-          ⚠️ Monthly spend is at {formatCost(totalCost)} — approaching budget
-        </div>
+      {/* Budget warning banner */}
+      {range === "month" && budget.level !== "ok" && (
+        <BudgetBanner level={budget.level} pct={budget.pct} cost={monthlyTotalCost} />
       )}
 
       {/* Summary cards */}
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {isLoading ? (
-          Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-32 rounded-3xl" />)
+          Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-32 rounded-3xl" />
+          ))
         ) : (
           <>
-            <StatCard label="Total Cost" value={formatCost(totalCost)} detail={`${rows.length} requests`} icon={<DollarSign className="size-5" />} />
-            <StatCard label="Total Tokens" value={formatTokens(totalTokens)} detail="Input + output" icon={<Zap className="size-5" />} />
-            <StatCard label="Most Used Model" value={mostUsedModel.split("/").pop() ?? mostUsedModel} detail={`${modelCounts.get(mostUsedModel) ?? 0} requests`} icon={<Cpu className="size-5" />} />
+            <StatCard
+              label="Total Spend"
+              value={formatCost(totalCost)}
+              detail={`${rows.length} requests`}
+              icon={<DollarSign className="size-5" />}
+              accent={
+                budget.level === "danger" || budget.level === "over"
+                  ? "text-rose-400"
+                  : budget.level === "warning"
+                    ? "text-amber-300"
+                    : "text-white"
+              }
+            />
+            <StatCard
+              label="Total Tokens"
+              value={formatTokens(totalTokens)}
+              detail={`${formatTokens(totalInputTokens)} in · ${formatTokens(totalOutputTokens)} out`}
+              icon={<Zap className="size-5" />}
+            />
+            <StatCard
+              label="Avg Daily Cost"
+              value={formatCost(avgDailyCost)}
+              detail={`${dailyChartData.length} days tracked`}
+              icon={<TrendingUp className="size-5" />}
+            />
             <StatCard
               label="Most Active Agent"
-              value={mostActiveAgent ? `${mostActiveAgent.emoji} ${mostActiveAgent.name}` : mostActiveAgentId ?? "—"}
+              value={
+                mostActiveAgent
+                  ? `${mostActiveAgent.emoji} ${mostActiveAgent.name}`
+                  : mostActiveAgentId ?? "—"
+              }
               detail={`${agentCounts.get(mostActiveAgentId ?? "") ?? 0} requests`}
               icon={<Bot className="size-5" />}
             />
@@ -270,69 +526,259 @@ export function UsageCostsPage() {
         )}
       </section>
 
-      {/* Spend by Provider */}
+      {/* Budget gauge (for month view) */}
+      {range === "month" && !isLoading && rows.length > 0 && (
+        <Card className="p-5">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <p className="text-xs uppercase tracking-[0.28em] text-slate-500">
+                Monthly Budget
+              </p>
+              <p className="mt-1 text-sm text-slate-400">
+                {formatCost(monthlyTotalCost)} of {formatCost(BUDGET_MONTHLY)} used
+              </p>
+            </div>
+            <Badge
+              tone={
+                budget.level === "ok"
+                  ? "success"
+                  : budget.level === "warning"
+                    ? "warning"
+                    : "danger"
+              }
+            >
+              {(budget.pct * 100).toFixed(0)}%
+            </Badge>
+          </div>
+          <div className="h-2.5 w-full overflow-hidden rounded-full bg-white/8">
+            <div
+              className={cn(
+                "h-full rounded-full transition-all duration-500",
+                budget.level === "ok" && "bg-emerald-400",
+                budget.level === "warning" && "bg-amber-400",
+                (budget.level === "danger" || budget.level === "over") &&
+                  "bg-rose-400",
+              )}
+              style={{ width: `${Math.min(budget.pct * 100, 100)}%` }}
+            />
+          </div>
+          {budget.pct < 1 && (
+            <p className="mt-2 text-xs text-slate-500">
+              ~{formatCost(BUDGET_MONTHLY - monthlyTotalCost)} remaining · projected{" "}
+              {formatCost(avgDailyCost * 30)} /month at current rate
+            </p>
+          )}
+        </Card>
+      )}
+
+      {/* Provider cards */}
       <section>
         <div className="mb-5">
-          <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Spend Overview</p>
-          <h2 className="mt-2 text-xl font-semibold text-white">Spend by Provider</h2>
+          <p className="text-xs uppercase tracking-[0.28em] text-slate-500">
+            Spend Overview
+          </p>
+          <h2 className="mt-2 text-xl font-semibold text-white">
+            Spend by Provider
+          </h2>
         </div>
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
           {isLoading ? (
-            Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-32 rounded-3xl" />)
-          ) : sortedProviders.length === 0 ? (
-            <p className="text-sm text-slate-500">No usage data found for this period.</p>
-          ) : (
-            sortedProviders.map(([providerName, data]) => (
-              <Card
-                key={providerName}
-                className="p-5"
-                style={providerColors[providerName.toLowerCase()] ? { borderLeftColor: providerColors[providerName.toLowerCase()], borderLeftWidth: 3 } : undefined}
-              >
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.28em] text-slate-500">{providerName}</p>
-                    <p className="mt-2 text-2xl font-semibold text-white">{formatCost(data.cost)}</p>
-                    <p className="mt-1 text-sm text-slate-400">
-                      {data.requests} requests · {data.topModel.split("/").pop()}
-                    </p>
-                  </div>
-                  <div
-                    className="size-10 rounded-full flex items-center justify-center text-white"
-                    style={{ backgroundColor: providerColors[providerName.toLowerCase()] || "#6b7280" }}
-                  ></div>
-                </div>
-              </Card>
+            Array.from({ length: 4 }).map((_, i) => (
+              <Skeleton key={i} className="h-36 rounded-3xl" />
             ))
+          ) : sortedProviders.length === 0 ? (
+            <p className="text-sm text-slate-500">
+              No usage data found for this period.
+            </p>
+          ) : (
+            sortedProviders.map(([providerName, data]) => {
+              const config = getProviderConfig(providerName);
+              const costPct =
+                monthlyTotalCost > 0
+                  ? (data.cost / monthlyTotalCost) * 100
+                  : 0;
+              return (
+                <Card
+                  key={providerName}
+                  className={cn(
+                    "relative overflow-hidden p-5 transition-all hover:border-white/15",
+                    providerFilter === providerName.toLowerCase() &&
+                      "ring-1 ring-sky-400/40",
+                  )}
+                  onClick={() =>
+                    setProviderFilter(
+                      providerFilter === providerName.toLowerCase()
+                        ? "all"
+                        : providerName.toLowerCase(),
+                    )
+                  }
+                  style={{ cursor: "pointer" }}
+                >
+                  {/* Color accent bar */}
+                  <div
+                    className="absolute left-0 top-0 h-full w-1 rounded-l-2xl"
+                    style={{ backgroundColor: config.color }}
+                  />
+                  <div className="flex items-start justify-between">
+                    <div className="pl-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-lg">{config.icon}</span>
+                        <p className="text-sm font-medium text-white">
+                          {config.label}
+                        </p>
+                      </div>
+                      <p className="mt-2 text-2xl font-semibold text-white">
+                        {formatCost(data.cost)}
+                      </p>
+                      <p className="mt-1 text-xs text-slate-400">
+                        {data.requests} requests · {formatTokens(data.tokens)}{" "}
+                        tokens
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <Badge tone="default">{costPct.toFixed(0)}%</Badge>
+                    </div>
+                  </div>
+                  {/* Mini bar */}
+                  <div className="mt-3 h-1 w-full overflow-hidden rounded-full bg-white/8">
+                    <div
+                      className="h-full rounded-full transition-all"
+                      style={{
+                        width: `${Math.max(costPct, 2)}%`,
+                        backgroundColor: config.color,
+                      }}
+                    />
+                  </div>
+                  <p className="mt-2 truncate text-[11px] text-slate-500">
+                    Top model: {data.topModel.split("/").pop()}
+                  </p>
+                </Card>
+              );
+            })
           )}
         </div>
       </section>
 
-      {/* Daily Cost Chart */}
+      {/* Daily cost area chart */}
       <section>
         <div className="mb-5">
-          <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Daily Overview</p>
-          <h2 className="mt-2 text-xl font-semibold text-white">Daily Spend</h2>
+          <p className="text-xs uppercase tracking-[0.28em] text-slate-500">
+            Daily Overview
+          </p>
+          <h2 className="mt-2 text-xl font-semibold text-white">
+            Daily Spend Trend
+          </h2>
         </div>
         {isLoading ? (
-          <Skeleton className="h-40 rounded-3xl" />
-        ) : sortedDailyCosts.length === 0 ? (
-          <p className="text-sm text-slate-500">No usage data found for this period.</p>
+          <Skeleton className="h-64 rounded-3xl" />
+        ) : dailyChartData.length === 0 ? (
+          <Card className="flex h-48 items-center justify-center">
+            <p className="text-sm text-slate-500">
+              No usage data found for this period.
+            </p>
+          </Card>
         ) : (
           <Card className="p-6">
-            <div className="flex h-32 items-end justify-between gap-2">
-              {sortedDailyCosts.map(([date, cost]) => {
-                const heightPct = maxDailyCost > 0 ? (cost / maxDailyCost) * 100 : 0;
-                const displayDate = new Date(date).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-                return (
-                  <div key={date} className="flex flex-1 flex-col items-center gap-1">
-                    <div
-                      className="w-full rounded-t-sm bg-sky-400/70 transition-all duration-300 ease-out"
-                      style={{ height: `${Math.max(heightPct, 3)}%` }}
+            <ResponsiveContainer width="100%" height={240}>
+              <AreaChart
+                data={dailyChartData}
+                margin={{ top: 8, right: 8, bottom: 0, left: 0 }}
+              >
+                <defs>
+                  <linearGradient
+                    id="costGradient"
+                    x1="0"
+                    y1="0"
+                    x2="0"
+                    y2="1"
+                  >
+                    <stop
+                      offset="0%"
+                      stopColor="#0ea5e9"
+                      stopOpacity={0.3}
                     />
-                    <p className="text-[10px] text-slate-500">{displayDate}</p>
-                  </div>
-                );
-              })}
+                    <stop
+                      offset="100%"
+                      stopColor="#0ea5e9"
+                      stopOpacity={0.02}
+                    />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  stroke="rgba(255,255,255,0.05)"
+                  vertical={false}
+                />
+                <XAxis
+                  dataKey="label"
+                  tick={{ fill: "#64748b", fontSize: 11 }}
+                  tickLine={false}
+                  axisLine={false}
+                  interval="preserveStartEnd"
+                />
+                <YAxis
+                  tick={{ fill: "#64748b", fontSize: 11 }}
+                  tickLine={false}
+                  axisLine={false}
+                  tickFormatter={(v: number) => `$${v.toFixed(v >= 1 ? 0 : 2)}`}
+                  width={50}
+                />
+                <RechartsTooltip
+                  content={<ChartTooltip />}
+                  cursor={{ stroke: "rgba(255,255,255,0.1)" }}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="total"
+                  stroke="#0ea5e9"
+                  strokeWidth={2}
+                  fill="url(#costGradient)"
+                  dot={false}
+                  activeDot={{
+                    r: 4,
+                    fill: "#0ea5e9",
+                    stroke: "#0c4a6e",
+                    strokeWidth: 2,
+                  }}
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+            {/* Summary row below chart */}
+            <div className="mt-4 flex items-center justify-between border-t border-white/5 pt-4">
+              <div className="flex gap-6">
+                <div>
+                  <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500">
+                    Peak Day
+                  </p>
+                  <p className="text-sm font-medium text-white">
+                    {formatCost(
+                      Math.max(
+                        ...dailyChartData.map((d) => d.total as number),
+                        0,
+                      ),
+                    )}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500">
+                    Average
+                  </p>
+                  <p className="text-sm font-medium text-white">
+                    {formatCost(avgDailyCost)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500">
+                    Period Total
+                  </p>
+                  <p className="text-sm font-medium text-white">
+                    {formatCost(totalCost)}
+                  </p>
+                </div>
+              </div>
+              <p className="text-xs text-slate-500">
+                {dailyChartData.length} days
+              </p>
             </div>
           </Card>
         )}
@@ -342,36 +788,72 @@ export function UsageCostsPage() {
         {/* Per-Agent Breakdown */}
         <Card className="p-6">
           <div className="mb-5">
-            <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Per-Agent Breakdown</p>
-            <h2 className="mt-2 text-xl font-semibold text-white">Spend by agent</h2>
+            <p className="text-xs uppercase tracking-[0.28em] text-slate-500">
+              Per-Agent Breakdown
+            </p>
+            <h2 className="mt-2 text-xl font-semibold text-white">
+              Spend by Agent
+            </h2>
           </div>
           <div className="space-y-3">
             {isLoading ? (
-              Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-20 rounded-2xl" />)
+              Array.from({ length: 4 }).map((_, i) => (
+                <Skeleton key={i} className="h-20 rounded-2xl" />
+              ))
             ) : sortedAgents.length === 0 ? (
-              <p className="text-sm text-slate-500">No usage data found for this period.</p>
+              <p className="text-sm text-slate-500">
+                No usage data found for this period.
+              </p>
             ) : (
               sortedAgents.map(([agentId, data]) => {
                 const agent = agents.find((a) => a.agent_id === agentId);
+                const pct =
+                  totalCost > 0 ? (data.cost / totalCost) * 100 : 0;
                 return (
                   <div
                     key={agentId}
                     className="rounded-2xl border border-white/8 bg-white/[0.03] p-4"
-                    style={agent?.color ? { borderLeftColor: agent.color, borderLeftWidth: 3 } : undefined}
+                    style={
+                      agent?.color
+                        ? {
+                            borderLeftColor: agent.color,
+                            borderLeftWidth: 3,
+                          }
+                        : undefined
+                    }
                   >
                     <div className="flex items-start justify-between gap-3">
-                      <div>
+                      <div className="min-w-0 flex-1">
                         <p className="font-medium text-white">
-                          <span className="mr-2">{agent?.emoji ?? "🤖"}</span>
-                          <span style={{ color: agent?.color }}>{agent?.name ?? agentId}</span>
+                          <span className="mr-2">
+                            {agent?.emoji ?? "🤖"}
+                          </span>
+                          <span style={{ color: agent?.color }}>
+                            {agent?.name ?? agentId}
+                          </span>
                         </p>
                         <p className="mt-1 text-sm text-slate-400">
-                          {data.model.split("/").pop()} · {formatTokens(data.tokens)} tokens
+                          {data.model.split("/").pop()} ·{" "}
+                          {data.requests} req ·{" "}
+                          {formatTokens(data.tokens)} tokens
                         </p>
+                        <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+                          <div
+                            className="h-full rounded-full transition-all"
+                            style={{
+                              width: `${Math.max(pct, 1)}%`,
+                              backgroundColor: agent?.color ?? "#4dd4ac",
+                            }}
+                          />
+                        </div>
                       </div>
-                      <div className="text-right">
-                        <p className="text-lg font-semibold text-white">{formatCost(data.cost)}</p>
-                        <p className="text-xs text-slate-500">{formatRelativeTime(data.lastActive)}</p>
+                      <div className="shrink-0 text-right">
+                        <p className="text-lg font-semibold text-white">
+                          {formatCost(data.cost)}
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          {formatRelativeTime(data.lastActive)}
+                        </p>
                       </div>
                     </div>
                   </div>
@@ -384,32 +866,66 @@ export function UsageCostsPage() {
         {/* Per-Model Breakdown */}
         <Card className="p-6">
           <div className="mb-5">
-            <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Per-Model Breakdown</p>
-            <h2 className="mt-2 text-xl font-semibold text-white">Spend by model</h2>
+            <p className="text-xs uppercase tracking-[0.28em] text-slate-500">
+              Per-Model Breakdown
+            </p>
+            <h2 className="mt-2 text-xl font-semibold text-white">
+              Spend by Model
+            </h2>
           </div>
           <div className="space-y-3">
             {isLoading ? (
-              Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-20 rounded-2xl" />)
+              Array.from({ length: 4 }).map((_, i) => (
+                <Skeleton key={i} className="h-20 rounded-2xl" />
+              ))
             ) : sortedModels.length === 0 ? (
-              <p className="text-sm text-slate-500">No usage data found for this period.</p>
+              <p className="text-sm text-slate-500">
+                No usage data found for this period.
+              </p>
             ) : (
               sortedModels.map(([model, data]) => {
-                const pct = totalCost > 0 ? (data.cost / totalCost) * 100 : 0;
+                const pct =
+                  totalCost > 0 ? (data.cost / totalCost) * 100 : 0;
+                const providerConfig = getProviderConfig(data.provider);
                 return (
-                  <div key={model} className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
+                  <div
+                    key={model}
+                    className="rounded-2xl border border-white/8 bg-white/[0.03] p-4"
+                  >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
-                        <p className="truncate font-medium text-white">{model}</p>
+                        <div className="flex items-center gap-2">
+                          <div
+                            className="size-2 rounded-full"
+                            style={{
+                              backgroundColor: providerConfig.color,
+                            }}
+                          />
+                          <p className="truncate font-medium text-white">
+                            {model}
+                          </p>
+                        </div>
                         <p className="mt-1 text-sm text-slate-400">
-                          {data.requests} requests · {formatTokens(data.tokens)} tokens
+                          {data.requests} requests ·{" "}
+                          {formatTokens(data.tokens)} tokens
                         </p>
                         <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-white/10">
-                          <div className="h-full rounded-full bg-sky-400/70 transition-all" style={{ width: `${Math.max(pct, 1)}%` }} />
+                          <div
+                            className="h-full rounded-full transition-all"
+                            style={{
+                              width: `${Math.max(pct, 1)}%`,
+                              backgroundColor: providerConfig.color,
+                            }}
+                          />
                         </div>
                       </div>
                       <div className="shrink-0 text-right">
-                        <p className="text-lg font-semibold text-white">{formatCost(data.cost)}</p>
-                        <p className="text-xs text-slate-500">{pct.toFixed(1)}%</p>
+                        <p className="text-lg font-semibold text-white">
+                          {formatCost(data.cost)}
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          {pct.toFixed(1)}%
+                        </p>
                       </div>
                     </div>
                   </div>
@@ -418,6 +934,59 @@ export function UsageCostsPage() {
             )}
           </div>
         </Card>
+      </div>
+    </div>
+  );
+}
+
+// ── Budget banner component ─────────────────────────────────────────
+
+function BudgetBanner({
+  level,
+  pct,
+  cost,
+}: {
+  level: "warning" | "danger" | "over";
+  pct: number;
+  cost: number;
+}) {
+  if (level === "over") {
+    return (
+      <div className="flex items-center gap-3 rounded-xl border border-rose-500/30 bg-rose-500/10 p-4 text-sm text-rose-200">
+        <ShieldAlert className="size-5 shrink-0 text-rose-400" />
+        <div>
+          <p className="font-medium">Budget exceeded!</p>
+          <p className="text-rose-300/80">
+            Monthly spend is at {formatCost(cost)} — {(pct * 100).toFixed(0)}%
+            of ${BUDGET_MONTHLY} budget.
+          </p>
+        </div>
+      </div>
+    );
+  }
+  if (level === "danger") {
+    return (
+      <div className="flex items-center gap-3 rounded-xl border border-rose-500/30 bg-rose-500/10 p-4 text-sm text-rose-200">
+        <AlertTriangle className="size-5 shrink-0 text-rose-400" />
+        <div>
+          <p className="font-medium">Approaching budget limit</p>
+          <p className="text-rose-300/80">
+            {formatCost(cost)} spent — {(pct * 100).toFixed(0)}% of $
+            {BUDGET_MONTHLY} monthly budget.
+          </p>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="flex items-center gap-3 rounded-xl border border-amber-400/30 bg-amber-400/10 p-4 text-sm text-amber-200">
+      <AlertTriangle className="size-5 shrink-0 text-amber-400" />
+      <div>
+        <p className="font-medium">Budget warning</p>
+        <p className="text-amber-200/80">
+          {formatCost(cost)} spent — {(pct * 100).toFixed(0)}% of $
+          {BUDGET_MONTHLY} monthly budget.
+        </p>
       </div>
     </div>
   );
