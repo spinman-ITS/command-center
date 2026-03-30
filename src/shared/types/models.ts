@@ -77,10 +77,17 @@ export interface IntegrationRecord {
 
 export interface CronJob {
   id: string;
+  job_id?: string;
   name: string;
   schedule: string;
+  agent_id?: string | null;
   last_run_at: string | null;
   next_run_at: string | null;
   last_status?: string | null;
-  status?: "healthy" | "paused" | "failing";
+  last_duration_ms?: number | null;
+  error?: string | null;
+  consecutive_errors?: number | null;
+  created_at?: string;
+  updated_at?: string;
+  status?: string | null;
 }

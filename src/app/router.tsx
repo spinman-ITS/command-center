@@ -1,5 +1,6 @@
 import { ActivityPage } from "@/features/activity/activity-page";
 import { DailyBriefsPage } from "@/features/briefs/daily-briefs-page";
+import { CronPage } from "@/features/cron/cron-page";
 import { DashboardPage } from "@/features/dashboard/dashboard-page";
 import { DocsPage } from "@/features/docs/docs-page";
 import { MemoryPage } from "@/features/memory/memory-page";
@@ -28,6 +29,7 @@ export const router = createBrowserRouter([
       { path: "briefs", element: <DailyBriefsPage /> },
       { path: "meetings", element: <MeetingSummariesPage /> },
       { path: "memory", element: <MemoryPage /> },
+      { path: "cron", element: <CronPage /> },
       { path: "usage", element: <UsageCostsPage /> },
       { path: "settings", element: <SettingsPage /> },
     ],

@@ -27,5 +27,6 @@ export function useIntegrationsQuery() {
 }
 
 export function useCronJobsQuery() {
+  useRealtimeInvalidation([{ table: "cron_jobs", queryKey: "cron-jobs" }]);
   return useQuery({ queryKey: ["cron-jobs"], queryFn: getCronJobs });
 }
