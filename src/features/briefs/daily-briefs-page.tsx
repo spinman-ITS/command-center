@@ -8,8 +8,6 @@ import { useQuery } from "@tanstack/react-query";
 import { ChevronDown, ChevronUp, Newspaper, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 
-// ─── Types ───────────────────────────────────────────────────────────────────
-
 type BriefType = "morning" | "eod";
 type DateFilter = "today" | "yesterday" | "week" | "month" | "all";
 type TypeFilter = "all" | BriefType;
@@ -24,7 +22,26 @@ interface DailyBrief {
   [key: string]: unknown;
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+const CHICAGO_TZ = "America/Chicago";
+const DATE_KEY_FORMATTER = new Intl.DateTimeFormat("en-CA", {
+  timeZone: CHICAGO_TZ,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+const DISPLAY_DATE_FORMATTER = new Intl.DateTimeFormat("en-US", {
+  timeZone: CHICAGO_TZ,
+  weekday: "long",
+  year: "numeric",
+  month: "long",
+  day: "numeric",
+});
+const GROUP_DATE_FORMATTER = new Intl.DateTimeFormat("en-US", {
+  timeZone: CHICAGO_TZ,
+  weekday: "long",
+  month: "long",
+  day: "numeric",
+});
 
 function normalizeBriefType(raw: string): BriefType {
   const lower = (raw ?? "").toLowerCase();
@@ -32,53 +49,55 @@ function normalizeBriefType(raw: string): BriefType {
   return "morning";
 }
 
-function getBriefDate(b: DailyBrief): Date {
-  return new Date(b.brief_date ?? b.created_at);
+function parseDateKey(dateKey: string): Date {
+  const [yearRaw, monthRaw, dayRaw] = dateKey.split("-");
+  const year = Number(yearRaw);
+  const month = Number(monthRaw);
+  const day = Number(dayRaw);
+  return new Date(year, month - 1, day, 12, 0, 0, 0);
 }
 
-function startOfDay(d: Date): Date {
-  const r = new Date(d);
-  r.setHours(0, 0, 0, 0);
-  return r;
+function getChicagoDateKeyFromDate(date: Date): string {
+  return DATE_KEY_FORMATTER.format(date);
 }
 
-function getMonday(d: Date): Date {
-  const r = startOfDay(d);
-  const day = r.getDay();
+function getTodayChicagoKey(): string {
+  return getChicagoDateKeyFromDate(new Date());
+}
+
+function addDaysToDateKey(dateKey: string, amount: number): string {
+  const date = parseDateKey(dateKey);
+  date.setDate(date.getDate() + amount);
+  return getChicagoDateKeyFromDate(date);
+}
+
+function getMondayChicagoKey(dateKey: string): string {
+  const date = parseDateKey(dateKey);
+  const day = date.getDay();
   const diff = day === 0 ? 6 : day - 1;
-  r.setDate(r.getDate() - diff);
-  return r;
+  date.setDate(date.getDate() - diff);
+  return getChicagoDateKeyFromDate(date);
 }
 
-function dateLabelKey(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+function getBriefDateKey(brief: DailyBrief): string {
+  if (brief.brief_date && /^\d{4}-\d{2}-\d{2}$/.test(brief.brief_date)) {
+    return brief.brief_date;
+  }
+  return getChicagoDateKeyFromDate(new Date(brief.created_at));
 }
 
-function formatGroupDate(d: Date): string {
-  const today = startOfDay(new Date());
-  const target = startOfDay(d);
-  const diff = today.getTime() - target.getTime();
-  const dayMs = 86400000;
-  const formatted = d.toLocaleDateString("en-US", {
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-  });
-  if (diff < dayMs && diff >= 0) return `Today, ${formatted}`;
-  if (diff < dayMs * 2 && diff >= dayMs) return `Yesterday, ${formatted}`;
+function formatGroupDate(dateKey: string): string {
+  const todayKey = getTodayChicagoKey();
+  const yesterdayKey = addDaysToDateKey(todayKey, -1);
+  const formatted = GROUP_DATE_FORMATTER.format(parseDateKey(dateKey));
+  if (dateKey === todayKey) return `Today, ${formatted}`;
+  if (dateKey === yesterdayKey) return `Yesterday, ${formatted}`;
   return formatted;
 }
 
-function formatBriefDate(dateString: string): string {
-  return new Date(dateString).toLocaleDateString("en-US", {
-    weekday: "long",
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
+function formatBriefDate(dateKey: string): string {
+  return DISPLAY_DATE_FORMATTER.format(parseDateKey(dateKey));
 }
-
-// ─── Data fetching ───────────────────────────────────────────────────────────
 
 function useDailyBriefs() {
   return useQuery<DailyBrief[]>({
@@ -99,86 +118,63 @@ function useDailyBriefs() {
   });
 }
 
-// ─── Date filtering ──────────────────────────────────────────────────────────
-
 function filterByDate(briefs: DailyBrief[], filter: DateFilter): DailyBrief[] {
   if (filter === "all") return briefs;
 
-  const now = new Date();
-  const today = startOfDay(now);
-  const dayMs = 86400000;
+  const todayKey = getTodayChicagoKey();
 
-  let start: Date;
-  let end: Date;
+  return briefs.filter((brief) => {
+    const briefKey = getBriefDateKey(brief);
 
-  switch (filter) {
-    case "today":
-      start = today;
-      end = new Date(today.getTime() + dayMs);
-      break;
-    case "yesterday":
-      start = new Date(today.getTime() - dayMs);
-      end = today;
-      break;
-    case "week":
-      start = getMonday(now);
-      end = new Date(start.getTime() + 7 * dayMs);
-      break;
-    case "month":
-      start = new Date(now.getFullYear(), now.getMonth(), 1);
-      end = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-      break;
-  }
-
-  return briefs.filter((b) => {
-    const d = getBriefDate(b);
-    return d >= start && d < end;
+    switch (filter) {
+      case "today":
+        return briefKey === todayKey;
+      case "yesterday":
+        return briefKey === addDaysToDateKey(todayKey, -1);
+      case "week": {
+        const mondayKey = getMondayChicagoKey(todayKey);
+        return briefKey >= mondayKey && briefKey <= todayKey;
+      }
+      case "month":
+        return briefKey.slice(0, 7) === todayKey.slice(0, 7);
+      default:
+        return true;
+    }
   });
 }
 
-// ─── Grouping ────────────────────────────────────────────────────────────────
-
 interface DateGroup {
   key: string;
-  date: Date;
   label: string;
   briefs: DailyBrief[];
 }
 
 function groupByDate(briefs: DailyBrief[]): DateGroup[] {
-  const map = new Map<string, { date: Date; briefs: DailyBrief[] }>();
+  const map = new Map<string, DailyBrief[]>();
 
-  for (const b of briefs) {
-    const d = getBriefDate(b);
-    const key = dateLabelKey(d);
+  for (const brief of briefs) {
+    const key = getBriefDateKey(brief);
     const existing = map.get(key);
     if (existing) {
-      existing.briefs.push(b);
+      existing.push(brief);
     } else {
-      map.set(key, { date: startOfDay(d), briefs: [b] });
+      map.set(key, [brief]);
     }
   }
 
   return Array.from(map.entries())
-    .sort(([, a], [, b]) => b.date.getTime() - a.date.getTime())
-    .map(([key, { date, briefs: groupBriefs }]) => ({
+    .sort(([a], [b]) => (a < b ? 1 : -1))
+    .map(([key, groupBriefs]) => ({
       key,
-      date,
-      label: formatGroupDate(date),
-      briefs: groupBriefs.sort(
-        (a, b) => getBriefDate(b).getTime() - getBriefDate(a).getTime(),
-      ),
+      label: formatGroupDate(key),
+      briefs: groupBriefs.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()),
     }));
 }
-
-// ─── Styles ──────────────────────────────────────────────────────────────────
 
 const TYPE_STYLES: Record<BriefType, { label: string; bg: string; text: string; dot: string }> = {
   morning: { label: "Morning", bg: "bg-amber-500/15", text: "text-amber-400", dot: "bg-amber-400" },
   eod: { label: "EOD", bg: "bg-blue-500/15", text: "text-blue-400", dot: "bg-blue-400" },
 };
-
-// ─── Markdown renderer ──────────────────────────────────────────────────────
 
 function renderMarkdown(text: string): string {
   return text
@@ -190,8 +186,6 @@ function renderMarkdown(text: string): string {
     .replace(/^- (.+)$/gm, '<li class="ml-4 list-disc text-slate-300">$1</li>')
     .replace(/\n/g, "<br />");
 }
-
-// ─── Date filter bar ─────────────────────────────────────────────────────────
 
 const DATE_FILTERS: { key: DateFilter; label: string }[] = [
   { key: "today", label: "Today" },
@@ -238,18 +232,15 @@ function DateFilterBar({
   );
 }
 
-// ─── Brief card (collapsed by default) ──────────────────────────────────────
-
 function BriefCard({ brief }: { brief: DailyBrief }) {
   const [expanded, setExpanded] = useState(false);
   const style = TYPE_STYLES[brief.type] ?? TYPE_STYLES.morning;
-  const dateDisplay = formatBriefDate(brief.brief_date ?? brief.created_at);
+  const dateDisplay = formatBriefDate(getBriefDateKey(brief));
   const content = brief.content ?? "";
-  const preview = content.length > 100 ? content.slice(0, 100).replace(/\s+\S*$/, "") + "…" : content;
+  const preview = content.length > 100 ? `${content.slice(0, 100).replace(/\s+\S*$/, "")}…` : content;
 
   return (
     <div className="rounded-xl border border-white/8 bg-white/[0.02] transition hover:border-white/12">
-      {/* Collapsed header — always visible */}
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
@@ -271,9 +262,8 @@ function BriefCard({ brief }: { brief: DailyBrief }) {
             <span className="text-[11px] text-slate-500">{dateDisplay}</span>
           </div>
 
-          {/* Preview when collapsed */}
           {!expanded && preview && (
-            <p className="mt-1.5 text-xs leading-relaxed text-slate-500 line-clamp-1">
+            <p className="mt-1.5 line-clamp-1 text-xs leading-relaxed text-slate-500">
               {preview}
             </p>
           )}
@@ -284,7 +274,6 @@ function BriefCard({ brief }: { brief: DailyBrief }) {
         </div>
       </button>
 
-      {/* Expanded content */}
       {expanded && (
         <div className="border-t border-white/6 px-4 pb-4 pt-3">
           <div className="text-sm leading-relaxed text-slate-300">
@@ -296,8 +285,6 @@ function BriefCard({ brief }: { brief: DailyBrief }) {
   );
 }
 
-// ─── Page ────────────────────────────────────────────────────────────────────
-
 export function DailyBriefsPage() {
   const { data, isLoading, isError } = useDailyBriefs();
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
@@ -306,16 +293,12 @@ export function DailyBriefsPage() {
 
   const filtered = useMemo(() => {
     let items = data ?? [];
-
-    // Date filter
     items = filterByDate(items, dateFilter);
 
-    // Type filter
     if (typeFilter !== "all") {
       items = items.filter((b) => b.type === typeFilter);
     }
 
-    // Search
     if (search.trim()) {
       const q = search.toLowerCase();
       items = items.filter((b) => (b.content ?? "").toLowerCase().includes(q));
@@ -326,13 +309,14 @@ export function DailyBriefsPage() {
 
   const groups = useMemo(() => groupByDate(filtered), [filtered]);
 
-  if (isError)
+  if (isError) {
     return (
       <ErrorState
         title="Briefs unavailable"
         description="Could not load daily briefs from the database."
       />
     );
+  }
 
   const typeFilters: { value: TypeFilter; label: string }[] = [
     { value: "all", label: "All" },
@@ -348,7 +332,6 @@ export function DailyBriefsPage() {
         description="Morning and end-of-day operational summaries."
         action={
           <div className="flex max-w-full flex-col gap-3 md:items-end">
-            {/* Type filter pills */}
             <div className="flex max-w-full flex-wrap gap-1 rounded-xl border border-white/10 bg-white/5 p-1">
               {typeFilters.map((f) => (
                 <button
@@ -367,7 +350,6 @@ export function DailyBriefsPage() {
               ))}
             </div>
 
-            {/* Search */}
             <div className="relative w-full max-w-full md:w-64">
               <Search className="absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-slate-500" />
               <input
@@ -382,10 +364,8 @@ export function DailyBriefsPage() {
         }
       />
 
-      {/* Date filter bar */}
       <DateFilterBar active={dateFilter} onChange={setDateFilter} count={filtered.length} />
 
-      {/* Content */}
       {isLoading ? (
         <div className="space-y-3">
           {Array.from({ length: 4 }).map((_, i) => (
@@ -414,7 +394,6 @@ export function DailyBriefsPage() {
         <div className="space-y-6">
           {groups.map((group) => (
             <div key={group.key}>
-              {/* Date group header */}
               <div className="mb-3 flex items-center gap-3">
                 <h2 className="shrink-0 text-xs font-semibold uppercase tracking-wider text-slate-500">
                   {group.label}
@@ -425,7 +404,6 @@ export function DailyBriefsPage() {
                 </span>
               </div>
 
-              {/* Brief cards */}
               <div className="space-y-2">
                 {group.briefs.map((brief) => (
                   <BriefCard key={brief.id} brief={brief} />
