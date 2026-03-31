@@ -12,13 +12,13 @@ import { Bot, Cable, Cpu, RadioTower, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 
 const columns = [
-  { key: "backlog", label: "Backlog", dotClassName: "bg-slate-400/80" },
-  { key: "design", label: "Design", dotClassName: "bg-violet-400/80" },
-  { key: "building", label: "Building", dotClassName: "bg-sky-400/80" },
-  { key: "testing", label: "Testing", dotClassName: "bg-cyan-400/80" },
-  { key: "live", label: "Live", dotClassName: "bg-emerald-300/80" },
-  { key: "paused", label: "Paused", dotClassName: "bg-amber-300/80" },
-  { key: "retired", label: "Retired", dotClassName: "bg-rose-400/80" },
+  { key: "backlog", label: "Backlog", dotClassName: "bg-slate-400/80", collapsible: false },
+  { key: "design", label: "Design", dotClassName: "bg-violet-400/80", collapsible: false },
+  { key: "building", label: "Building", dotClassName: "bg-sky-400/80", collapsible: false },
+  { key: "testing", label: "Testing", dotClassName: "bg-cyan-400/80", collapsible: false },
+  { key: "paused", label: "Paused", dotClassName: "bg-amber-300/80", collapsible: false },
+  { key: "live", label: "Live", dotClassName: "bg-emerald-300/80", collapsible: true },
+  { key: "retired", label: "Retired", dotClassName: "bg-rose-400/80", collapsible: false },
 ] as const;
 
 type AutomationStatus = (typeof columns)[number]["key"];
@@ -250,17 +250,31 @@ function KanbanColumn({
   column: (typeof columns)[number];
   items: AutomationRecord[];
 }) {
+  const [collapsed, setCollapsed] = useState(column.collapsible === true);
+
   return (
     <Card className="flex min-h-[520px] min-w-0 flex-col overflow-hidden border-white/8 p-3">
-      <div className="mb-3 flex items-center justify-between gap-3 rounded-2xl border border-white/6 bg-white/[0.03] px-3 py-2">
+      <button
+        type="button"
+        className="mb-3 flex w-full items-center justify-between gap-3 rounded-2xl border border-white/6 bg-white/[0.03] px-3 py-2 text-left"
+        onClick={() => { if (column.collapsible) setCollapsed((prev) => !prev); }}
+        style={{ cursor: column.collapsible ? "pointer" : "default" }}
+      >
         <div className="flex min-w-0 items-center gap-2">
           <span className={cn("size-2.5 rounded-full", column.dotClassName)} />
           <p className="truncate text-sm font-semibold text-white">{column.label}</p>
+          {column.collapsible && (
+            <span className="text-xs text-slate-500">{collapsed ? "▸" : "▾"}</span>
+          )}
         </div>
         <Badge className="px-2 py-0.5 text-[10px]">{items.length}</Badge>
-      </div>
+      </button>
 
-      {items.length === 0 ? (
+      {collapsed ? (
+        <div className="flex flex-1 items-center justify-center rounded-xl border border-dashed border-transparent py-8 text-center text-sm text-slate-500">
+          {items.length} automation{items.length !== 1 ? "s" : ""} — click to expand
+        </div>
+      ) : items.length === 0 ? (
         <div className="flex flex-1 items-center justify-center rounded-xl border border-dashed border-transparent py-8 text-center text-sm text-slate-600">
           No automations
         </div>
