@@ -3,8 +3,10 @@ import { Card } from "@/shared/components/ui/card";
 import { SectionHeader } from "@/shared/components/ui/section-header";
 import { Skeleton } from "@/shared/components/ui/skeleton";
 import { ErrorState } from "@/shared/components/error-state";
+import { Badge } from "@/shared/components/ui/badge";
+import { Button } from "@/shared/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
-import { CheckSquare, ChevronDown, ChevronUp, Clock, Lightbulb, Search, Video } from "lucide-react";
+import { CheckSquare, ChevronDown, ChevronUp, Clock, ExternalLink, Lightbulb, Search, Video } from "lucide-react";
 import { useMemo, useState } from "react";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -19,6 +21,11 @@ interface MeetingSummary {
   date: string | null;
   duration: string | number | null;
   created_at: string;
+  recording_url?: string | null;
+  transcript_length?: number | null;
+  key_takeaways?: string | null;
+  topics?: unknown;
+  notes?: string | null;
   [key: string]: unknown;
 }
 
@@ -264,7 +271,7 @@ function FormattedContent({ text }: { text: string }) {
       continue;
     }
 
-    if (/^\*\*[^*]+\*\*:?\s*$/.test(trimmed)) {
+    if (/^\*\*[^*]+\*\*: ?\s*$/.test(trimmed)) {
       elements.push(
         <p key={i} className="mt-3 mb-1 text-xs font-bold uppercase tracking-wider text-slate-400">
           {trimmed.replace(/\*\*/g, "").replace(/:$/, "")}
@@ -374,6 +381,8 @@ function MeetingCard({ meeting }: { meeting: MeetingSummary }) {
   const notes = typeof meeting.notes === "string" ? meeting.notes : null;
   const hasExtra = actionItems.length > 0 || keyTakeaways || topics.length > 0 || notes || summary.length > 100;
   const time = formatTime(meeting.meeting_date ?? meeting.date ?? meeting.created_at);
+  const recordingUrl = typeof meeting.recording_url === "string" ? meeting.recording_url : null;
+  const transcriptLength = typeof meeting.transcript_length === "number" ? meeting.transcript_length : null;
 
   // Preview: first 100 chars of summary
   const preview = summary.length > 100 ? summary.slice(0, 100).replace(/\s+\S*$/, "") + "…" : summary;
@@ -389,7 +398,7 @@ function MeetingCard({ meeting }: { meeting: MeetingSummary }) {
         <Video className="mt-0.5 size-4 shrink-0 text-sky-400" />
         <div className="min-w-0 flex-1">
           <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between">
-            <h3 className="text-sm font-semibold text-white truncate">
+            <h3 className="truncate text-sm font-semibold text-white">
               {meeting.title || "Untitled Meeting"}
             </h3>
             <div className="flex shrink-0 items-center gap-2 text-[11px] text-slate-500">
@@ -422,9 +431,31 @@ function MeetingCard({ meeting }: { meeting: MeetingSummary }) {
 
           {/* Summary preview (collapsed only) */}
           {!expanded && preview && (
-            <p className="mt-1.5 text-xs leading-relaxed text-slate-500 line-clamp-1">
+            <p className="mt-1.5 line-clamp-1 text-xs leading-relaxed text-slate-500">
               {preview}
             </p>
+          )}
+
+          {recordingUrl && (
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                variant="secondary"
+                className="h-8 px-3 py-1.5 text-xs"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  window.open(recordingUrl, "_blank", "noopener,noreferrer");
+                }}
+              >
+                <ExternalLink className="mr-1.5 size-3.5" />
+                View in Fathom
+              </Button>
+              {transcriptLength !== null && (
+                <Badge tone="default" className="border-white/10 bg-white/5 text-slate-300">
+                  {transcriptLength} {transcriptLength === 1 ? "segment" : "segments"}
+                </Badge>
+              )}
+            </div>
           )}
         </div>
 
@@ -438,7 +469,7 @@ function MeetingCard({ meeting }: { meeting: MeetingSummary }) {
 
       {/* Expanded content */}
       {expanded && (
-        <div className="border-t border-white/6 px-4 pb-4 pt-3 space-y-4">
+        <div className="space-y-4 border-t border-white/6 px-4 pb-4 pt-3">
           {summary && (
             <div>
               <p className="mb-1.5 text-xs font-bold uppercase tracking-wider text-slate-500">
