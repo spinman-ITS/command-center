@@ -14,7 +14,7 @@ const navItems = [
   { to: "/briefs", label: "Daily Briefs", icon: Newspaper },
   { to: "/meetings", label: "Meetings", icon: Video },
   { to: "/memory", label: "Memory", icon: Brain },
-  { to: "/cron", label: "Cron Jobs", icon: TimerReset },
+  { to: "/cron", label: "Scheduled Tasks", icon: TimerReset },
   { to: "/usage", label: "Usage & Costs", icon: BarChart3 },
   { to: "/settings", label: "Settings", icon: Settings },
 ];
