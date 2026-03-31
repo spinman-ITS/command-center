@@ -6,6 +6,7 @@ import { NavLink, Outlet } from "react-router-dom";
 
 const navItems = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard },
+  { to: "/automations", label: "Automations", icon: Workflow },
   { to: "/projects", label: "Projects", icon: FolderKanban },
   { to: "/marketing", label: "Marketing", icon: Megaphone },
   { to: "/team", label: "Team", icon: UsersRound },
@@ -15,7 +16,6 @@ const navItems = [
   { to: "/meetings", label: "Meetings", icon: Video },
   { to: "/memory", label: "Memory", icon: Brain },
   { to: "/cron", label: "Scheduled Tasks", icon: TimerReset },
-  { to: "/automations", label: "Automations", icon: Workflow },
   { to: "/usage", label: "Usage & Costs", icon: BarChart3 },
   { to: "/settings", label: "Settings", icon: Settings },
 ];
