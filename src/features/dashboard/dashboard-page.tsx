@@ -32,6 +32,21 @@ export function DashboardPage() {
   return (
     <div className="space-y-6">
       <SectionHeader eyebrow="Mission Control" title="Atlas Command Center" description="Live operating picture built from Supabase agents, tasks, cron jobs, docs, and activity." action={<div className="flex gap-3"><Link to="/projects"><Button variant="secondary">View Projects</Button></Link><Link to="/team"><Button>View Team</Button></Link></div>} />
+
+      <div className="relative overflow-hidden rounded-3xl border border-emerald-500/20 bg-gradient-to-r from-emerald-950/40 via-slate-900/60 to-emerald-950/40 p-6">
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_rgba(16,185,129,0.08)_0%,transparent_60%)]" />
+        <div className="relative flex items-center gap-4">
+          <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl border border-emerald-500/20 bg-emerald-500/10 text-2xl">🛡️</div>
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.3em] text-emerald-400/70">Our Mission</p>
+            <p className="mt-1.5 text-lg font-medium leading-relaxed text-slate-200">
+              We protect, optimize, and modernize the technology that growing businesses depend on
+              <span className="text-slate-400"> — with the expertise, integrity, and accountability of a partner who treats your business like our own.</span>
+            </p>
+          </div>
+        </div>
+      </div>
+
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {agentsQuery.isLoading || tasksQuery.isLoading || cronQuery.isLoading ? Array.from({ length: 4 }).map((_, index) => <Skeleton key={index} className="h-36 rounded-3xl" />) : <><StatCard label="Total Agents" value={String(agents.length)} detail="Rows from agent_team" icon={<UsersRound className="size-5" />} /><StatCard label="Active Tasks" value={String(activeTasks)} detail="Tasks in progress" icon={<ListTodo className="size-5" />} /><StatCard label="Completed This Week" value={String(completedThisWeek)} detail="Finished in the last 7 days" icon={<CheckCircle2 className="size-5" />} /><StatCard label="Cron Health" value={`${healthyCronJobs}/${cronJobs.length}`} detail="Jobs reporting last_status = ok" icon={<ShieldCheck className="size-5" />} /></>}
       </section>
