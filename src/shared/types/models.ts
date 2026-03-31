@@ -104,6 +104,8 @@ export interface AutomationRecord {
   frequency: string | null;
   integrations: string[] | null;
   priority: string | null;
+  systems_requirements: string | null;
+  expected_behavior: string | null;
   notes: string | null;
   created_at: string;
   updated_at: string;

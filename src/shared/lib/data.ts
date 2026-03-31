@@ -40,6 +40,46 @@ export function getAutomations() {
   return selectOrFallback<AutomationRecord>("automations", "updated_at");
 }
 
+export interface AutomationInput {
+  name: string;
+  description: string;
+  type: string;
+  platform: string;
+  status: string;
+  assigned_to: string;
+  trigger_type: string;
+  frequency: string;
+  integrations: string[];
+  priority: string;
+  systems_requirements: string;
+  expected_behavior: string;
+  notes: string;
+}
+
+export async function createAutomation(input: AutomationInput): Promise<AutomationRecord | null> {
+  if (!supabase) return null;
+  const response = await supabase
+    .from("automations")
+    .insert(input)
+    .select()
+    .single();
+  if (response.error) throw response.error;
+  return response.data as AutomationRecord;
+}
+
+export async function updateAutomation(id: string, updates: Partial<Omit<AutomationRecord, "id" | "created_at" | "updated_at">>): Promise<AutomationRecord | null> {
+  if (!supabase) return null;
+  const response = await supabase.from("automations").update(updates).eq("id", id).select().single();
+  if (response.error) throw response.error;
+  return response.data as AutomationRecord;
+}
+
+export async function deleteAutomation(id: string): Promise<void> {
+  if (!supabase) return;
+  const { error } = await supabase.from("automations").delete().eq("id", id);
+  if (error) throw error;
+}
+
 // ── Task mutations ──────────────────────────────────────────────────
 
 export interface CreateTaskInput {
