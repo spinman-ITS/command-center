@@ -91,3 +91,20 @@ export interface CronJob {
   updated_at?: string;
   status?: string | null;
 }
+
+export interface AutomationRecord {
+  id: string;
+  name: string;
+  description: string | null;
+  type: string | null;
+  platform: string | null;
+  status: string;
+  assigned_to: string | null;
+  trigger_type: string | null;
+  frequency: string | null;
+  integrations: string[] | null;
+  priority: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}

@@ -1,5 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
-import type { ActivityItem, Agent, CronJob, DocumentRecord, IntegrationRecord, Task } from "@/shared/types/models";
+import type { ActivityItem, Agent, AutomationRecord, CronJob, DocumentRecord, IntegrationRecord, Task } from "@/shared/types/models";
 
 async function selectOrFallback<T extends object>(table: string, orderColumn?: string): Promise<T[]> {
   if (!supabase) return [];
@@ -34,6 +34,10 @@ export function getIntegrations() {
 
 export function getCronJobs() {
   return selectOrFallback<CronJob>("cron_jobs");
+}
+
+export function getAutomations() {
+  return selectOrFallback<AutomationRecord>("automations", "updated_at");
 }
 
 // ── Task mutations ──────────────────────────────────────────────────

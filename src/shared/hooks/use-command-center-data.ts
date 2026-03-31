@@ -1,5 +1,5 @@
 import { useRealtimeInvalidation } from "@/shared/hooks/use-realtime-invalidation";
-import { getActivity, getAgents, getCronJobs, getDocs, getIntegrations, getTasks } from "@/shared/lib/data";
+import { getActivity, getAgents, getAutomations, getCronJobs, getDocs, getIntegrations, getTasks } from "@/shared/lib/data";
 import { useQuery } from "@tanstack/react-query";
 
 export function useAgentsQuery() {
@@ -29,4 +29,9 @@ export function useIntegrationsQuery() {
 export function useCronJobsQuery() {
   useRealtimeInvalidation([{ table: "cron_jobs", queryKey: "cron-jobs" }]);
   return useQuery({ queryKey: ["cron-jobs"], queryFn: getCronJobs });
+}
+
+export function useAutomationsQuery() {
+  useRealtimeInvalidation([{ table: "automations", queryKey: "automations" }]);
+  return useQuery({ queryKey: ["automations"], queryFn: getAutomations });
 }
