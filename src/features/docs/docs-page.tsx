@@ -8,7 +8,7 @@ import { Select } from "@/shared/components/ui/select";
 import { Skeleton } from "@/shared/components/ui/skeleton";
 import { cn, formatAbsoluteDate, formatRelativeTime } from "@/shared/lib/utils";
 import type { ContentDeliverableRecord } from "@/shared/types/models";
-import { Search } from "lucide-react";
+import { Facebook, Linkedin, Mail, Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -126,6 +126,53 @@ function getDefaultTab(tabMap: Partial<Record<DeliverableTabKey, ContentDelivera
   return DELIVERABLE_TABS.find((tab) => tabMap[tab]) ?? null;
 }
 
+function markdownToPlainText(content: string) {
+  return content
+    .replace(/```[\s\S]*?```/g, (block) => block.replace(/```/g, "").trim())
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, "$1")
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1")
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/^>\s?/gm, "")
+    .replace(/^[-*+]\s+/gm, "")
+    .replace(/^\d+\.\s+/gm, "")
+    .replace(/^\s*[-*+]\s\[(?: |x)\]\s+/gim, "")
+    .replace(/[*_~]+/g, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function extractHashtags(content: string) {
+  const matches = content.match(/(?:^|\s)(#[A-Za-z0-9_]+)/g) ?? [];
+  return [...new Set(matches.map((tag) => tag.trim()))];
+}
+
+function removeHashtags(content: string) {
+  return content
+    .replace(/(?:^|\s)(#[A-Za-z0-9_]+)(?=\s|$)/g, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function parseEmailContent(content: string, fallbackSubject: string) {
+  const plainText = markdownToPlainText(content);
+  const lines = plainText.split("\n");
+  const subjectLineIndex = lines.findIndex((line) => /^subject\s*:/i.test(line));
+  const subject = subjectLineIndex >= 0 ? (lines[subjectLineIndex] ?? "").replace(/^subject\s*:\s*/i, "").trim() : fallbackSubject;
+
+  const bodyLines = lines.filter((_, index) => index !== subjectLineIndex);
+  const signatureStart = bodyLines.findIndex((line, index) => {
+    if (index < Math.max(1, bodyLines.length - 5)) return false;
+    return /^(best|best regards|regards|thanks|thank you|sincerely|warmly|cheers)[,!]?$/i.test(line.trim());
+  });
+
+  return {
+    subject,
+    body: bodyLines.slice(0, signatureStart >= 0 ? signatureStart : undefined).join("\n").trim(),
+    signature: signatureStart >= 0 ? bodyLines.slice(signatureStart).join("\n").trim() : "",
+  };
+}
+
 function CampaignListItem({
   campaign,
   isSelected,
@@ -182,6 +229,114 @@ function DeliverableViewer({
     return <div className="flex h-full min-h-[420px] items-center justify-center text-slate-500">This campaign has no deliverables for the current filters.</div>;
   }
 
+  const plainTextContent = markdownToPlainText(item.content || "");
+  const hashtags = selectedTab === "linkedin_personal" || selectedTab === "linkedin_business" ? extractHashtags(plainTextContent) : [];
+  const socialBody = removeHashtags(plainTextContent);
+  const emailContent = parseEmailContent(item.content || "", item.title);
+
+  const renderContent = () => {
+    if (selectedTab === "blog") {
+      return (
+        <article className="space-y-6">
+          <header className="max-w-3xl space-y-3">
+            <p className="text-xs font-medium uppercase tracking-[0.24em] text-sky-300/80">Blog Article</p>
+            <h3 className="text-4xl font-semibold tracking-tight text-white sm:text-5xl">{item.title}</h3>
+          </header>
+
+          {item.image_url ? (
+            <div className="overflow-hidden rounded-3xl border border-white/10 bg-black/20">
+              <img src={item.image_url} alt={item.title} className="h-auto w-full object-cover" />
+            </div>
+          ) : null}
+
+          <div className="prose prose-invert max-w-3xl prose-headings:text-white prose-h2:mt-12 prose-h2:mb-4 prose-h2:text-2xl prose-h2:font-semibold prose-h3:mt-8 prose-h3:mb-3 prose-h3:text-xl prose-h3:font-semibold prose-p:text-slate-200 prose-p:leading-8 prose-p:[&:not(:first-child)]:mt-6 prose-strong:text-white prose-blockquote:border-sky-400/40 prose-blockquote:text-slate-300 prose-blockquote:not-italic prose-blockquote:leading-8 prose-ul:space-y-2 prose-li:text-slate-200 prose-code:text-emerald-200 prose-pre:border prose-pre:border-white/10 prose-pre:bg-slate-950/70">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{item.content || ""}</ReactMarkdown>
+          </div>
+        </article>
+      );
+    }
+
+    if (selectedTab === "linkedin_personal" || selectedTab === "linkedin_business") {
+      return (
+        <div className="max-w-3xl rounded-[28px] border border-sky-400/20 bg-slate-950/70 p-6 shadow-[0_0_0_1px_rgba(56,189,248,0.04)]">
+          <div className="flex items-center gap-3 border-b border-white/8 pb-4">
+            <div className="flex size-10 items-center justify-center rounded-full bg-[#0A66C2]/15 text-[#0A66C2]">
+              <Linkedin className="size-5" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-white">LinkedIn Post</p>
+              <p className="text-xs text-slate-400">{selectedTab === "linkedin_personal" ? "Personal profile preview" : "Business page preview"}</p>
+            </div>
+          </div>
+
+          <div className="mt-5 space-y-5">
+            <p className="whitespace-pre-line text-[15px] leading-7 text-slate-100">{socialBody}</p>
+            {hashtags.length ? <p className="whitespace-pre-line text-sm leading-7 text-sky-400">{hashtags.join(" ")}</p> : null}
+            {item.image_url ? (
+              <div className="overflow-hidden rounded-2xl border border-white/10 bg-black/20">
+                <img src={item.image_url} alt={item.title} className="h-auto w-full object-cover" />
+              </div>
+            ) : null}
+          </div>
+        </div>
+      );
+    }
+
+    if (selectedTab === "facebook") {
+      return (
+        <div className="max-w-3xl rounded-[28px] border border-blue-300/15 bg-slate-950/60 p-6 shadow-[0_0_0_1px_rgba(251,191,36,0.03)]">
+          <div className="flex items-center gap-3 border-b border-white/8 pb-4">
+            <div className="flex size-10 items-center justify-center rounded-full bg-[#1877F2]/15 text-[#1877F2]">
+              <Facebook className="size-5" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-white">Facebook Post</p>
+              <p className="text-xs text-slate-400">Feed preview</p>
+            </div>
+          </div>
+
+          <div className="mt-5 space-y-5">
+            <p className="whitespace-pre-line text-[15px] leading-7 text-slate-100">{plainTextContent}</p>
+            {item.image_url ? (
+              <div className="overflow-hidden rounded-2xl border border-amber-200/10 bg-black/20">
+                <img src={item.image_url} alt={item.title} className="h-auto w-full object-cover" />
+              </div>
+            ) : null}
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="max-w-3xl rounded-[28px] border border-emerald-400/15 bg-slate-950/70 p-6 shadow-[0_0_0_1px_rgba(16,185,129,0.04)]">
+        <div className="flex items-center gap-3 border-b border-white/8 pb-4">
+          <div className="flex size-10 items-center justify-center rounded-full bg-emerald-400/12 text-emerald-300">
+            <Mail className="size-5" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-white">Email Preview</p>
+            <p className="text-xs text-slate-400">Client preview pane</p>
+          </div>
+        </div>
+
+        <div className="mt-5 space-y-5">
+          <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-3">
+            <p className="text-xs font-medium uppercase tracking-[0.22em] text-slate-500">Subject</p>
+            <p className="mt-2 text-lg font-semibold text-white">{emailContent.subject}</p>
+          </div>
+
+          <div className="whitespace-pre-line text-[15px] leading-7 text-slate-100">{emailContent.body}</div>
+          {emailContent.signature ? <div className="whitespace-pre-line border-t border-white/8 pt-4 text-sm leading-6 text-slate-400">{emailContent.signature}</div> : null}
+          {item.image_url ? (
+            <div className="overflow-hidden rounded-2xl border border-white/10 bg-black/20">
+              <img src={item.image_url} alt={item.title} className="h-auto w-full object-cover" />
+            </div>
+          ) : null}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-6">
       <div className="border-b border-white/8 pb-5">
@@ -210,17 +365,7 @@ function DeliverableViewer({
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_280px]">
-        <div className="space-y-5">
-          {item.image_url ? (
-            <div className="overflow-hidden rounded-3xl border border-white/10 bg-black/20">
-              <img src={item.image_url} alt={item.title} className="h-auto w-full object-cover" />
-            </div>
-          ) : null}
-
-          <div className="prose prose-invert max-w-none prose-headings:text-white prose-p:text-slate-200 prose-strong:text-white prose-li:text-slate-200 prose-code:text-emerald-200 prose-pre:border prose-pre:border-white/10 prose-pre:bg-slate-950/70">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{item.content || ""}</ReactMarkdown>
-          </div>
-        </div>
+        <div className="space-y-5">{renderContent()}</div>
 
         <div className="space-y-4 rounded-3xl border border-white/8 bg-white/[0.03] p-5">
           <div>
