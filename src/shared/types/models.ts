@@ -77,6 +77,9 @@ export interface ContentDeliverableRecord {
   image_url: string | null;
   tags: string[] | null;
   status: string;
+  pipeline_tokens: number | null;
+  pipeline_cost_estimate: number | null;
+  pipeline_duration_seconds: number | null;
   created_at: string;
   updated_at: string;
 }

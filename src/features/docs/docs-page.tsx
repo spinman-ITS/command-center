@@ -173,6 +173,31 @@ function parseEmailContent(content: string, fallbackSubject: string) {
   };
 }
 
+function getCampaignPipelineMetrics(items: ContentDeliverableRecord[]) {
+  return items.find((candidate) => candidate.pipeline_tokens !== null);
+}
+
+function formatPipelineTokens(tokens: number) {
+  const tokensInThousands = tokens / 1000;
+
+  if (Number.isInteger(tokensInThousands)) {
+    return `${tokensInThousands}k`;
+  }
+
+  return `${tokensInThousands.toFixed(1)}k`;
+}
+
+function formatPipelineCost(cost: number) {
+  return `$${cost.toFixed(2)}`;
+}
+
+function formatPipelineDuration(durationSeconds: number) {
+  const minutes = Math.floor(durationSeconds / 60);
+  const seconds = durationSeconds % 60;
+
+  return `${minutes}m ${seconds}s`;
+}
+
 function CampaignListItem({
   campaign,
   isSelected,
@@ -233,6 +258,7 @@ function DeliverableViewer({
   const hashtags = selectedTab === "linkedin_personal" || selectedTab === "linkedin_business" ? extractHashtags(plainTextContent) : [];
   const socialBody = removeHashtags(plainTextContent);
   const emailContent = parseEmailContent(item.content || "", item.title);
+  const pipelineMetrics = getCampaignPipelineMetrics(campaign.items);
 
   const renderContent = () => {
     if (selectedTab === "blog") {
@@ -368,6 +394,29 @@ function DeliverableViewer({
         <div className="space-y-5">{renderContent()}</div>
 
         <div className="space-y-4 rounded-3xl border border-white/8 bg-white/[0.03] p-5">
+          {pipelineMetrics ? (
+            <div className="space-y-4 border-b border-white/8 pb-4">
+              <div>
+                <p className="text-xs uppercase tracking-[0.22em] text-slate-500">⚡ Pipeline Metrics</p>
+              </div>
+
+              <dl className="space-y-4 text-sm text-slate-300">
+                <div>
+                  <dt className="text-xs uppercase tracking-[0.2em] text-slate-500">Tokens</dt>
+                  <dd className="mt-1 text-white">{pipelineMetrics.pipeline_tokens !== null ? formatPipelineTokens(pipelineMetrics.pipeline_tokens) : "—"}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs uppercase tracking-[0.2em] text-slate-500">Est. cost</dt>
+                  <dd className="mt-1 text-white">{pipelineMetrics.pipeline_cost_estimate !== null ? formatPipelineCost(pipelineMetrics.pipeline_cost_estimate) : "—"}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs uppercase tracking-[0.2em] text-slate-500">Duration</dt>
+                  <dd className="mt-1 text-white">{pipelineMetrics.pipeline_duration_seconds !== null ? formatPipelineDuration(pipelineMetrics.pipeline_duration_seconds) : "—"}</dd>
+                </div>
+              </dl>
+            </div>
+          ) : null}
+
           <div>
             <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Metadata</p>
           </div>
