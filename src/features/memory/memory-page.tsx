@@ -404,7 +404,7 @@ export function MemoryPage() {
             <div
               className={`${
                 sidebarOpen ? "block" : "hidden"
-              } md:block w-full md:w-[280px] shrink-0 border-r border-white/[0.06] bg-slate-950/80`}
+              } md:block w-full md:w-[360px] shrink-0 border-r border-white/[0.06] bg-slate-950/80`}
             >
               {/* Search */}
               <div className="border-b border-white/[0.06] p-3">
