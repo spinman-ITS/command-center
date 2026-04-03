@@ -1,5 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
-import type { ActivityItem, Agent, AutomationRecord, CronJob, DocumentRecord, IntegrationRecord, Task } from "@/shared/types/models";
+import type { ActivityItem, Agent, AutomationRecord, ContentDeliverableRecord, CronJob, DocumentRecord, IntegrationRecord, Task } from "@/shared/types/models";
 
 async function selectOrFallback<T extends object>(table: string, orderColumn?: string): Promise<T[]> {
   if (!supabase) return [];
@@ -26,6 +26,10 @@ export async function getActivity(limit = 50) {
 
 export function getDocs() {
   return selectOrFallback<DocumentRecord>("documents", "updated_at");
+}
+
+export function getContentDeliverables() {
+  return selectOrFallback<ContentDeliverableRecord>("content_deliverables", "updated_at");
 }
 
 export function getIntegrations() {

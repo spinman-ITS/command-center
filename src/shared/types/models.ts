@@ -67,6 +67,20 @@ export interface DocumentRecord {
   updated_at: string;
 }
 
+export interface ContentDeliverableRecord {
+  id: string;
+  title: string;
+  content_type: string;
+  agent_id: string;
+  campaign_title: string | null;
+  content: string;
+  image_url: string | null;
+  tags: string[] | null;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface IntegrationRecord {
   id: string;
   name: string;

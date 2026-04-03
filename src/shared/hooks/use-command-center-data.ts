@@ -1,5 +1,5 @@
 import { useRealtimeInvalidation } from "@/shared/hooks/use-realtime-invalidation";
-import { getActivity, getAgents, getAutomations, getCronJobs, getDocs, getIntegrations, getTasks } from "@/shared/lib/data";
+import { getActivity, getAgents, getAutomations, getContentDeliverables, getCronJobs, getDocs, getIntegrations, getTasks } from "@/shared/lib/data";
 import { useQuery } from "@tanstack/react-query";
 
 export function useAgentsQuery() {
@@ -20,6 +20,11 @@ export function useActivityQuery(limit = 50) {
 export function useDocsQuery() {
   useRealtimeInvalidation([{ table: "documents", queryKey: "docs" }]);
   return useQuery({ queryKey: ["docs"], queryFn: getDocs });
+}
+
+export function useContentDeliverables() {
+  useRealtimeInvalidation([{ table: "content_deliverables", queryKey: "content-deliverables" }]);
+  return useQuery({ queryKey: ["content-deliverables"], queryFn: getContentDeliverables });
 }
 
 export function useIntegrationsQuery() {
