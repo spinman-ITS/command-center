@@ -399,7 +399,7 @@ export function MemoryPage() {
           </div>
 
           {/* Two-panel layout */}
-          <div className="flex min-h-[600px] overflow-hidden rounded-2xl border border-white/[0.06]">
+          <div className="flex overflow-hidden rounded-2xl border border-white/[0.06]" style={{ height: "calc(100vh - 220px)" }}>
             {/* Sidebar */}
             <div
               className={`${
@@ -429,7 +429,7 @@ export function MemoryPage() {
               </div>
 
               {/* Tree */}
-              <div className="overflow-y-auto p-2" style={{ maxHeight: "calc(100vh - 420px)" }}>
+              <div className="overflow-y-auto flex-1 p-2">
                 {filteredTree.length === 0 ? (
                   <p className="px-3 py-6 text-center text-sm text-slate-500">No files match your filter.</p>
                 ) : (
@@ -449,7 +449,7 @@ export function MemoryPage() {
             </div>
 
             {/* Content viewer */}
-            <div className="flex-1 overflow-y-auto bg-slate-900/50 p-6 md:p-8" style={{ maxHeight: "calc(100vh - 300px)", minHeight: "600px" }}>
+            <div className="flex-1 overflow-y-auto bg-slate-900/50 p-6 md:p-8">
               {selectedDoc ? (
                 <div className="mx-auto max-w-3xl space-y-6">
                   {/* Breadcrumb */}
