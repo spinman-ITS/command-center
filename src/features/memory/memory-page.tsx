@@ -55,7 +55,12 @@ function classifyDoc(doc: DocumentRecord): { folder: string; subPath: string } {
     return { folder: "Daily Logs", subPath: fp.replace("memory/", "") };
   }
 
-  // Memory sub-folders (maintenance, meetings, etc.)
+  // Maintenance logs get their own folder
+  if (fp.startsWith("memory/maintenance/")) {
+    return { folder: "Maintenance Logs", subPath: fp.replace("memory/maintenance/", "") };
+  }
+
+  // Memory sub-folders (meetings, etc.)
   if (fp.startsWith("memory/")) {
     const rest = fp.replace("memory/", "");
     const parts = rest.split("/");
@@ -82,7 +87,7 @@ function classifyDoc(doc: DocumentRecord): { folder: string; subPath: string } {
 function buildTree(docs: DocumentRecord[]): TreeNode[] {
   const rootMap = new Map<string, TreeNode>();
 
-  const folderOrder = ["Atlas", "Agent-Shared", "Daily Logs", "Projects", "Research", "Other"];
+  const folderOrder = ["Atlas", "Agent-Shared", "Daily Logs", "Maintenance Logs", "Projects", "Research", "Other"];
 
   for (const doc of docs) {
     const { folder, subPath } = classifyDoc(doc);
