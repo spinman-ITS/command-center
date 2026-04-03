@@ -275,7 +275,7 @@ function DeliverableViewer({
             </div>
           ) : null}
 
-          <div className="prose prose-invert max-w-3xl prose-headings:text-white prose-h2:mt-12 prose-h2:mb-4 prose-h2:text-2xl prose-h2:font-semibold prose-h3:mt-8 prose-h3:mb-3 prose-h3:text-xl prose-h3:font-semibold prose-p:text-slate-200 prose-p:leading-8 prose-p:[&:not(:first-child)]:mt-6 prose-strong:text-white prose-blockquote:border-sky-400/40 prose-blockquote:text-slate-300 prose-blockquote:not-italic prose-blockquote:leading-8 prose-ul:space-y-2 prose-li:text-slate-200 prose-code:text-emerald-200 prose-pre:border prose-pre:border-white/10 prose-pre:bg-slate-950/70">
+          <div className="prose prose-invert max-w-3xl prose-headings:text-white prose-h2:mt-12 prose-h2:mb-4 prose-h2:text-2xl prose-h2:font-semibold prose-h3:mt-8 prose-h3:mb-3 prose-h3:text-xl prose-h3:font-semibold prose-p:text-slate-200 prose-p:leading-8 prose-p:[&:not(:first-child)]:mt-6 prose-a:text-sky-300 prose-a:underline prose-a:underline-offset-2 hover:prose-a:text-sky-200 prose-strong:text-white prose-blockquote:border-sky-400/40 prose-blockquote:text-slate-300 prose-blockquote:not-italic prose-blockquote:leading-8 prose-ul:list-disc prose-ul:space-y-2 prose-ul:pl-6 prose-ol:list-decimal prose-ol:pl-6 prose-li:text-slate-200 prose-li:marker:text-slate-400 prose-code:text-emerald-200 prose-pre:border prose-pre:border-white/10 prose-pre:bg-slate-950/70">
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{item.content || ""}</ReactMarkdown>
           </div>
         </article>
