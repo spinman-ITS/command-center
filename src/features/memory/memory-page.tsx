@@ -1,409 +1,513 @@
 import { useDocsQuery } from "@/shared/hooks/use-command-center-data";
 import { ErrorState } from "@/shared/components/error-state";
 import { Badge } from "@/shared/components/ui/badge";
-import { Button } from "@/shared/components/ui/button";
 import { Card } from "@/shared/components/ui/card";
 import { Input } from "@/shared/components/ui/input";
 import { SectionHeader } from "@/shared/components/ui/section-header";
-import { Select } from "@/shared/components/ui/select";
 import { Skeleton } from "@/shared/components/ui/skeleton";
-import { formatAbsoluteDate, formatRelativeTime, truncateText } from "@/shared/lib/utils";
+import { formatRelativeTime } from "@/shared/lib/utils";
 import type { DocumentRecord } from "@/shared/types/models";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
+import {
+  ChevronDown,
+  ChevronRight,
+  FileText,
+  Folder,
+  FolderOpen,
+  Search,
+  X,
+  Menu,
+} from "lucide-react";
 
-type MemorySource = "all" | "daily" | "meetings" | "maintenance" | "reports";
-type MemoryKind = "long-term" | "daily" | "maintenance" | "meeting" | "report";
+/* ------------------------------------------------------------------ */
+/*  Types                                                              */
+/* ------------------------------------------------------------------ */
 
-const DAILY_PATH_REGEX = /^memory\/(\d{4}-\d{2}-\d{2})\.md$/i;
-const MAINTENANCE_PATH_REGEX = /^memory\/maintenance\/(\d{4}-\d{2}-\d{2})\.md$/i;
-const MEETING_PATH_REGEX = /^memory\/meetings\/(.+)\.md$/i;
-
-function isMemoryDocument(doc: DocumentRecord) {
-  const filePath = doc.file_path.trim();
-  const haystack = [doc.title, doc.category, doc.doc_type, filePath, ...(doc.tags ?? [])].join(" ").toLowerCase();
-  return filePath === "MEMORY.md" || filePath.toLowerCase().startsWith("memory/") || haystack.includes("memory");
+interface TreeNode {
+  name: string;
+  label: string;
+  path: string;
+  children: TreeNode[];
+  doc: DocumentRecord | null;
 }
 
-function getMemoryKind(doc: DocumentRecord): MemoryKind {
-  if (doc.file_path === "MEMORY.md") return "long-term";
-  if (DAILY_PATH_REGEX.test(doc.file_path)) return "daily";
-  if (MAINTENANCE_PATH_REGEX.test(doc.file_path)) return "maintenance";
-  if (MEETING_PATH_REGEX.test(doc.file_path)) return "meeting";
-  return "report";
+/* ------------------------------------------------------------------ */
+/*  Helpers – classify docs into virtual folders                       */
+/* ------------------------------------------------------------------ */
+
+function classifyDoc(doc: DocumentRecord): { folder: string; subPath: string } {
+  const fp = doc.file_path;
+
+  // Top-level workspace files (MEMORY.md, working-context.md, mistakes.md, decisions-log.md)
+  if (!fp.includes("/")) {
+    return { folder: "Atlas", subPath: fp };
+  }
+
+  // Agent-shared files
+  if (fp.startsWith("agent-shared/")) {
+    return { folder: "Agent-Shared", subPath: fp.replace("agent-shared/", "") };
+  }
+
+  // Daily logs – memory/YYYY-MM-DD*.md
+  if (/^memory\/\d{4}-\d{2}-\d{2}/.test(fp)) {
+    return { folder: "Daily Logs", subPath: fp.replace("memory/", "") };
+  }
+
+  // Memory sub-folders (maintenance, meetings, etc.)
+  if (fp.startsWith("memory/")) {
+    const rest = fp.replace("memory/", "");
+    const parts = rest.split("/");
+    if (parts.length > 1) {
+      return { folder: "Daily Logs", subPath: rest };
+    }
+    return { folder: "Daily Logs", subPath: rest };
+  }
+
+  // Projects
+  if (fp.startsWith("projects/")) {
+    return { folder: "Projects", subPath: fp.replace("projects/", "") };
+  }
+
+  // Docs / Research
+  if (fp.startsWith("docs/")) {
+    return { folder: "Research", subPath: fp.replace("docs/", "") };
+  }
+
+  // Fallback
+  return { folder: "Other", subPath: fp };
 }
 
-function getDateFromPath(doc: DocumentRecord) {
-  const dateMatch =
-    doc.file_path.match(DAILY_PATH_REGEX)?.[1] ??
-    doc.file_path.match(MAINTENANCE_PATH_REGEX)?.[1] ??
-    doc.file_path.match(/(\d{4}-\d{2}-\d{2})/i)?.[1];
+function buildTree(docs: DocumentRecord[]): TreeNode[] {
+  const rootMap = new Map<string, TreeNode>();
 
-  if (!dateMatch) return null;
+  const folderOrder = ["Atlas", "Agent-Shared", "Daily Logs", "Projects", "Research", "Other"];
 
-  const parsed = new Date(`${dateMatch}T12:00:00`);
-  if (Number.isNaN(parsed.getTime())) return null;
+  for (const doc of docs) {
+    const { folder, subPath } = classifyDoc(doc);
 
-  return parsed;
+    if (!rootMap.has(folder)) {
+      rootMap.set(folder, {
+        name: folder,
+        label: folder,
+        path: folder,
+        children: [],
+        doc: null,
+      });
+    }
+
+    const rootNode = rootMap.get(folder)!;
+    const parts = subPath.replace(/\.md$/i, "").split("/");
+
+    let current = rootNode;
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i] ?? "";
+      const isLast = i === parts.length - 1;
+      const fullPath = `${folder}/${parts.slice(0, i + 1).join("/")}`;
+
+      if (isLast) {
+        // Leaf node – doc
+        current.children.push({
+          name: part,
+          label: prettifyName(part, doc),
+          path: fullPath,
+          children: [],
+          doc,
+        });
+      } else {
+        // Intermediate folder
+        const existing = current.children.find((c) => c.name === part && !c.doc);
+        if (existing) {
+          current = existing;
+        } else {
+          const newFolder: TreeNode = {
+            name: part,
+            label: prettifyFolderName(part),
+            path: fullPath,
+            children: [],
+            doc: null,
+          };
+          current.children.push(newFolder);
+          current = newFolder;
+        }
+      }
+    }
+  }
+
+  // Sort folders in preferred order
+  const result: TreeNode[] = [];
+  for (const key of folderOrder) {
+    const node = rootMap.get(key);
+    if (node) {
+      sortChildren(node);
+      result.push(node);
+    }
+  }
+
+  return result;
 }
 
-function formatReadableDate(date: Date | null, fallback: string) {
-  if (!date) return fallback;
+function sortChildren(node: TreeNode) {
+  // Folders first, then files. Daily logs sorted newest first.
+  node.children.sort((a, b) => {
+    const aIsFolder = a.children.length > 0 && !a.doc;
+    const bIsFolder = b.children.length > 0 && !b.doc;
+    if (aIsFolder !== bIsFolder) return aIsFolder ? -1 : 1;
 
-  return new Intl.DateTimeFormat("en-US", {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  }).format(date);
+    // For daily logs, sort newest first
+    const aDate = a.name.match(/^\d{4}-\d{2}-\d{2}/);
+    const bDate = b.name.match(/^\d{4}-\d{2}-\d{2}/);
+    if (aDate && bDate) return bDate[0].localeCompare(aDate[0]);
+
+    return a.name.localeCompare(b.name);
+  });
+
+  for (const child of node.children) {
+    if (child.children.length > 0) sortChildren(child);
+  }
 }
 
-function getEntryLabel(doc: DocumentRecord) {
-  const pathDate = getDateFromPath(doc);
-  if (pathDate) return formatReadableDate(pathDate, doc.title || doc.file_path);
-  return doc.title || doc.file_path.split("/").at(-1) || "Untitled memory";
-}
-
-function getMeetingTitle(doc: DocumentRecord) {
-  if (doc.title?.trim()) return doc.title;
-
-  const rawName = doc.file_path.match(MEETING_PATH_REGEX)?.[1] ?? doc.file_path.split("/").at(-1)?.replace(/\.md$/i, "") ?? "Meeting note";
-  return rawName
+function prettifyName(name: string, doc: DocumentRecord): string {
+  // Use doc title if it's short enough, otherwise clean filename
+  if (doc.title && doc.title.length < 60) return doc.title;
+  return name
     .replace(/[-_]+/g, " ")
-    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+    .replace(/\b\w/g, (l) => l.toUpperCase());
 }
 
-function matchesSearch(doc: DocumentRecord, search: string) {
-  if (!search.trim()) return true;
+function prettifyFolderName(name: string): string {
+  return name
+    .replace(/[-_]+/g, " ")
+    .replace(/\b\w/g, (l) => l.toUpperCase());
+}
+
+function countDocs(node: TreeNode): number {
+  if (node.doc) return 1;
+  return node.children.reduce((sum, c) => sum + countDocs(c), 0);
+}
+
+function matchesSearch(doc: DocumentRecord, term: string): boolean {
+  if (!term.trim()) return true;
   const haystack = [doc.title, doc.content, doc.category, doc.doc_type, doc.file_path, ...(doc.tags ?? [])].join(" ").toLowerCase();
-  return haystack.includes(search.trim().toLowerCase());
+  return haystack.includes(term.trim().toLowerCase());
 }
 
-function matchesSource(doc: DocumentRecord, source: MemorySource) {
-  if (source === "all") return true;
-  const kind = getMemoryKind(doc);
-  if (source === "daily") return kind === "daily";
-  if (source === "meetings") return kind === "meeting";
-  if (source === "maintenance") return kind === "maintenance";
-  return kind === "report";
+function filterTree(node: TreeNode, matchIds: Set<string>): TreeNode | null {
+  if (node.doc) {
+    return matchIds.has(node.doc.id) ? node : null;
+  }
+
+  const filteredChildren = node.children
+    .map((child) => filterTree(child, matchIds))
+    .filter(Boolean) as TreeNode[];
+
+  if (filteredChildren.length === 0) return null;
+
+  return { ...node, children: filteredChildren };
 }
 
-function getCategoryTone(kind: MemoryKind): "default" | "success" | "warning" {
-  if (kind === "daily") return "success";
-  if (kind === "maintenance") return "warning";
-  return "default";
+/* ------------------------------------------------------------------ */
+/*  Breadcrumb                                                         */
+/* ------------------------------------------------------------------ */
+
+function getBreadcrumb(doc: DocumentRecord): string[] {
+  const { folder, subPath } = classifyDoc(doc);
+  const parts = subPath.replace(/\.md$/i, "").split("/");
+  return [folder, ...parts];
 }
 
-function getKindLabel(kind: MemoryKind) {
-  if (kind === "long-term") return "Long-Term";
-  if (kind === "daily") return "Daily";
-  if (kind === "maintenance") return "Maintenance";
-  if (kind === "meeting") return "Meeting";
-  return "Report";
-}
+/* ------------------------------------------------------------------ */
+/*  Sidebar Tree Component                                             */
+/* ------------------------------------------------------------------ */
 
-function getLocalDateKey() {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = `${now.getMonth() + 1}`.padStart(2, "0");
-  const day = `${now.getDate()}`.padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
+function TreeItem({
+  node,
+  depth,
+  selectedId,
+  expandedPaths,
+  onSelect,
+  onToggleExpand,
+}: {
+  node: TreeNode;
+  depth: number;
+  selectedId: string | null;
+  expandedPaths: Set<string>;
+  onSelect: (doc: DocumentRecord) => void;
+  onToggleExpand: (path: string) => void;
+}) {
+  const isFolder = !node.doc && node.children.length > 0;
+  const isExpanded = expandedPaths.has(node.path);
+  const isSelected = node.doc?.id === selectedId;
+  const docCount = isFolder ? countDocs(node) : 0;
 
-function renderMarkdown(content: string) {
+  if (isFolder) {
+    return (
+      <div>
+        <button
+          type="button"
+          onClick={() => onToggleExpand(node.path)}
+          className="flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-sm text-slate-300 hover:bg-slate-800/60 hover:text-white transition-colors"
+          style={{ paddingLeft: `${depth * 16 + 8}px` }}
+        >
+          {isExpanded ? (
+            <ChevronDown className="h-3.5 w-3.5 shrink-0 text-slate-500" />
+          ) : (
+            <ChevronRight className="h-3.5 w-3.5 shrink-0 text-slate-500" />
+          )}
+          {isExpanded ? (
+            <FolderOpen className="h-4 w-4 shrink-0 text-emerald-400" />
+          ) : (
+            <Folder className="h-4 w-4 shrink-0 text-emerald-400/70" />
+          )}
+          <span className="truncate font-medium">{node.label}</span>
+          <span className="ml-auto shrink-0 text-xs text-slate-500">{docCount}</span>
+        </button>
+        {isExpanded && (
+          <div>
+            {node.children.map((child) => (
+              <TreeItem
+                key={child.path}
+                node={child}
+                depth={depth + 1}
+                selectedId={selectedId}
+                expandedPaths={expandedPaths}
+                onSelect={onSelect}
+                onToggleExpand={onToggleExpand}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Leaf node
   return (
-    <div className="prose prose-invert max-w-none prose-headings:text-white prose-p:text-slate-200 prose-strong:text-white prose-li:text-slate-200 prose-code:text-emerald-200">
-      <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
-    </div>
+    <button
+      type="button"
+      onClick={() => node.doc && onSelect(node.doc)}
+      className={`flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-sm transition-colors ${
+        isSelected
+          ? "bg-emerald-500/10 text-emerald-300 border-l-2 border-emerald-400"
+          : "text-slate-400 hover:bg-slate-800/60 hover:text-slate-200"
+      }`}
+      style={{ paddingLeft: `${depth * 16 + 8}px` }}
+    >
+      <FileText className={`h-3.5 w-3.5 shrink-0 ${isSelected ? "text-emerald-400" : "text-slate-500"}`} />
+      <span className="truncate">{node.label}</span>
+    </button>
   );
 }
+
+/* ------------------------------------------------------------------ */
+/*  Main Page                                                          */
+/* ------------------------------------------------------------------ */
 
 export function MemoryPage() {
   const docsQuery = useDocsQuery();
   const [search, setSearch] = useState("");
-  const [source, setSource] = useState<MemorySource>("all");
-  const [openIds, setOpenIds] = useState<string[]>([]);
-  const [didSeedOpenState, setDidSeedOpenState] = useState(false);
+  const [selectedDoc, setSelectedDoc] = useState<DocumentRecord | null>(null);
+  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set(["Atlas", "Daily Logs"]));
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const docs = docsQuery.data ?? [];
-  const todayKey = getLocalDateKey();
 
-  const memoryDocs = useMemo(
-    () => docs.filter(isMemoryDocument).sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()),
-    [docs],
-  );
+  const tree = useMemo(() => buildTree(docs), [docs]);
 
-  const longTermMemory = useMemo(() => memoryDocs.find((doc) => doc.file_path === "MEMORY.md"), [memoryDocs]);
-  const dailyEntries = useMemo(() => memoryDocs.filter((doc) => getMemoryKind(doc) === "daily"), [memoryDocs]);
-  const maintenanceEntries = useMemo(() => memoryDocs.filter((doc) => getMemoryKind(doc) === "maintenance"), [memoryDocs]);
-  const meetingEntries = useMemo(() => memoryDocs.filter((doc) => getMemoryKind(doc) === "meeting"), [memoryDocs]);
-  const specialReports = useMemo(() => memoryDocs.filter((doc) => getMemoryKind(doc) === "report"), [memoryDocs]);
+  const filteredTree = useMemo(() => {
+    if (!search.trim()) return tree;
+    const matchIds = new Set(docs.filter((d) => matchesSearch(d, search)).map((d) => d.id));
+    return tree.map((root) => filterTree(root, matchIds)).filter(Boolean) as TreeNode[];
+  }, [tree, docs, search]);
 
-  const todayDaily = useMemo(() => dailyEntries.find((doc) => doc.file_path.includes(`/${todayKey}.md`)), [dailyEntries, todayKey]);
-  const todayMaintenance = useMemo(
-    () => maintenanceEntries.find((doc) => doc.file_path.includes(`/${todayKey}.md`)),
-    [maintenanceEntries, todayKey],
-  );
+  const uniqueCategories = useMemo(() => new Set(docs.map((d) => d.category)).size, [docs]);
+  const lastUpdated = useMemo(() => {
+    if (docs.length === 0) return null;
+    const first = docs[0];
+    if (!first) return null;
+    return docs.reduce((latest, d) => (d.updated_at > latest ? d.updated_at : latest), first.updated_at);
+  }, [docs]);
 
-  useEffect(() => {
-    if (didSeedOpenState) return;
+  const toggleExpand = useCallback((path: string) => {
+    setExpandedPaths((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+  }, []);
 
-    const initialOpenIds = [todayDaily?.id, todayMaintenance?.id].filter(Boolean) as string[];
-    if (initialOpenIds.length > 0) {
-      setOpenIds(initialOpenIds);
-    }
-    setDidSeedOpenState(true);
-  }, [didSeedOpenState, todayDaily?.id, todayMaintenance?.id]);
-
-  const filteredDocs = useMemo(
-    () => memoryDocs.filter((doc) => matchesSearch(doc, search) && matchesSource(doc, source)),
-    [memoryDocs, search, source],
-  );
-
-  const filteredLookup = useMemo(() => new Set(filteredDocs.map((doc) => doc.id)), [filteredDocs]);
-
-  const filteredLongTermMemory = longTermMemory && filteredLookup.has(longTermMemory.id) ? longTermMemory : null;
-  const filteredTodayDaily = todayDaily && filteredLookup.has(todayDaily.id) ? todayDaily : null;
-  const filteredTodayMaintenance = todayMaintenance && filteredLookup.has(todayMaintenance.id) ? todayMaintenance : null;
-
-  const recentDailyEntries = useMemo(
-    () => dailyEntries.filter((doc) => doc.id !== todayDaily?.id && filteredLookup.has(doc.id)).slice(0, 7),
-    [dailyEntries, filteredLookup, todayDaily?.id],
-  );
-
-  const filteredMeetings = useMemo(() => meetingEntries.filter((doc) => filteredLookup.has(doc.id)), [meetingEntries, filteredLookup]);
-  const filteredSpecialReports = useMemo(() => specialReports.filter((doc) => filteredLookup.has(doc.id)), [specialReports, filteredLookup]);
-
-  const lastUpdated = memoryDocs[0]?.updated_at;
+  const handleSelect = useCallback((doc: DocumentRecord) => {
+    setSelectedDoc(doc);
+    setSidebarOpen(false);
+  }, []);
 
   if (docsQuery.isError) return <ErrorState title="Memory unavailable" description="Memory documents could not be loaded." />;
 
-  const toggle = (id: string) => {
-    setOpenIds((current) => (current.includes(id) ? current.filter((item) => item !== id) : [...current, id]));
-  };
-
-  const renderCollapsibleCard = (doc: DocumentRecord, options?: { title?: string; previewLength?: number; badgeLabel?: string; meta?: string }) => {
-    const isOpen = openIds.includes(doc.id);
-    const kind = getMemoryKind(doc);
-
-    return (
-      <Card key={doc.id} className="overflow-hidden p-5">
-        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-          <div className="space-y-2">
-            <div className="flex flex-wrap items-center gap-2">
-              <h3 className="text-lg font-semibold text-white">{options?.title ?? doc.title ?? doc.file_path.split("/").at(-1)}</h3>
-              <Badge tone={getCategoryTone(kind)}>{options?.badgeLabel ?? getKindLabel(kind)}</Badge>
-              {doc.category ? <Badge>{doc.category}</Badge> : null}
-            </div>
-            <p className="text-sm text-slate-400">{options?.meta ?? `Updated ${formatAbsoluteDate(doc.updated_at)}`}</p>
-          </div>
-          <Button variant="ghost" onClick={() => toggle(doc.id)}>
-            {isOpen ? "Collapse" : "Expand"}
-          </Button>
-        </div>
-
-        <div className="mt-4 border-t border-white/8 pt-4">
-          {!isOpen ? <p className="text-sm leading-6 text-slate-300">{truncateText(doc.content, options?.previewLength ?? 200)}</p> : renderMarkdown(doc.content)}
-        </div>
-      </Card>
-    );
-  };
-
-  const showEmptyState = !docsQuery.isLoading && filteredDocs.length === 0;
+  const breadcrumb = selectedDoc ? getBreadcrumb(selectedDoc) : [];
 
   return (
     <div className="space-y-6">
       <SectionHeader
         eyebrow="Memory"
         title="Atlas memory dashboard"
-        description="Long-term context, daily notes, meetings, and reports organized for quick scanning."
+        description="Browse workspace files, daily notes, projects, and research in an Obsidian-style layout."
       />
 
+      {/* Loading state */}
       {docsQuery.isLoading ? (
         <div className="space-y-4">
           <div className="grid gap-4 md:grid-cols-3">
-            {Array.from({ length: 3 }).map((_, index) => (
-              <Skeleton key={index} className="h-32 rounded-2xl" />
+            {Array.from({ length: 3 }).map((_, i) => (
+              <Skeleton key={i} className="h-32 rounded-2xl" />
             ))}
           </div>
-          {Array.from({ length: 4 }).map((_, index) => (
-            <Skeleton key={index} className="h-48 rounded-2xl" />
-          ))}
+          <Skeleton className="h-[600px] rounded-2xl" />
         </div>
       ) : (
         <>
+          {/* Stats bar */}
           <div className="grid gap-4 md:grid-cols-3">
             <Card className="p-5">
-              <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Total Memory Files</p>
-              <p className="mt-3 text-4xl font-semibold text-white">{memoryDocs.length}</p>
-              <p className="mt-2 text-sm text-slate-400">All synced memory documents across long-term, daily, meetings, and reports.</p>
+              <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Total Files</p>
+              <p className="mt-3 text-4xl font-semibold text-white">{docs.length}</p>
+              <p className="mt-2 text-sm text-slate-400">All synced documents across the workspace.</p>
             </Card>
             <Card className="p-5">
-              <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Daily Entries</p>
-              <p className="mt-3 text-4xl font-semibold text-white">{dailyEntries.length}</p>
-              <p className="mt-2 text-sm text-slate-400">Date-based memory journals captured from the workspace.</p>
+              <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Categories</p>
+              <p className="mt-3 text-4xl font-semibold text-white">{uniqueCategories}</p>
+              <p className="mt-2 text-sm text-slate-400">Unique document categories in the vault.</p>
             </Card>
             <Card className="p-5">
-              <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Last Updated</p>
+              <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Last Sync</p>
               <p className="mt-3 text-4xl font-semibold text-white">{lastUpdated ? formatRelativeTime(lastUpdated) : "—"}</p>
-              <p className="mt-2 text-sm text-slate-400">Most recent memory activity from the synced document set.</p>
+              <p className="mt-2 text-sm text-slate-400">Most recent document activity.</p>
             </Card>
           </div>
 
-          <Card className="p-5">
-            <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-              <div>
-                <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Search & Filter</p>
-                <h2 className="mt-2 text-xl font-semibold text-white">Scan memory by source</h2>
-                <p className="mt-1 text-sm text-slate-400">Search across content, titles, file paths, categories, and tags.</p>
-              </div>
-              <div className="grid gap-3 md:grid-cols-2 xl:w-[460px]">
-                <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search memory…" />
-                <Select value={source} onChange={(event) => setSource(event.target.value as MemorySource)}>
-                  <option value="all">All</option>
-                  <option value="daily">Daily</option>
-                  <option value="meetings">Meetings</option>
-                  <option value="maintenance">Maintenance</option>
-                  <option value="reports">Reports</option>
-                </Select>
-              </div>
-            </div>
-          </Card>
+          {/* Mobile sidebar toggle */}
+          <div className="md:hidden">
+            <button
+              type="button"
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              className="flex items-center gap-2 rounded-lg bg-slate-800 px-4 py-2.5 text-sm font-medium text-slate-300 hover:bg-slate-700 transition-colors"
+            >
+              <Menu className="h-4 w-4" />
+              {sidebarOpen ? "Hide file tree" : "Show file tree"}
+            </button>
+          </div>
 
-          {showEmptyState ? (
-            <Card className="p-6 text-sm text-slate-400">No memory documents match the current search and source filters.</Card>
-          ) : (
-            <div className="space-y-8">
-              <section className="space-y-4">
-                <SectionHeader
-                  eyebrow="Section 1"
-                  title="Atlas Long-Term Memory"
-                  description="Curated persistent memory from MEMORY.md."
-                />
-                <Card className="p-6">
-                  <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-                    <div>
-                      <div className="flex flex-wrap items-center gap-3">
-                        <h2 className="text-2xl font-semibold text-white">Long-Term Memory</h2>
-                        <Badge tone={filteredLongTermMemory ? "success" : "danger"}>{filteredLongTermMemory ? "Synced" : "Missing"}</Badge>
-                      </div>
-                      <p className="mt-2 text-sm text-slate-400">
-                        {filteredLongTermMemory ? `Last updated ${formatAbsoluteDate(filteredLongTermMemory.updated_at)}` : "No MEMORY.md document is currently available in the synced records."}
-                      </p>
-                    </div>
-                    {filteredLongTermMemory ? (
-                      <Button variant="ghost" onClick={() => toggle(filteredLongTermMemory.id)}>
-                        {openIds.includes(filteredLongTermMemory.id) ? "Collapse" : "Expand"}
-                      </Button>
-                    ) : null}
-                  </div>
-
-                  {filteredLongTermMemory ? (
-                    <div className="mt-5 border-t border-white/8 pt-5">
-                      {openIds.includes(filteredLongTermMemory.id) ? renderMarkdown(filteredLongTermMemory.content) : <p className="text-sm leading-6 text-slate-300">{truncateText(filteredLongTermMemory.content, 300)}</p>}
-                    </div>
-                  ) : (
-                    <p className="mt-5 text-sm text-slate-500">Try clearing filters if MEMORY.md exists but is currently hidden.</p>
-                  )}
-                </Card>
-              </section>
-
-              <section className="space-y-4">
-                <SectionHeader
-                  eyebrow="Section 2"
-                  title="Today’s Activity"
-                  description="Today’s journal and maintenance notes surfaced first for quick review."
-                />
-                <div className="grid gap-4 xl:grid-cols-2">
-                  {filteredTodayDaily ? (
-                    renderCollapsibleCard(filteredTodayDaily, {
-                      title: "Today’s Daily Memory",
-                      previewLength: 240,
-                      badgeLabel: "Daily",
-                      meta: `${getEntryLabel(filteredTodayDaily)} · Updated ${formatAbsoluteDate(filteredTodayDaily.updated_at)}`,
-                    })
-                  ) : (
-                    <Card className="p-5 text-sm text-slate-400">No daily memory entry for today matches the current filters.</Card>
-                  )}
-
-                  {filteredTodayMaintenance ? (
-                    renderCollapsibleCard(filteredTodayMaintenance, {
-                      title: "Today’s Maintenance Report",
-                      previewLength: 240,
-                      badgeLabel: "Maintenance",
-                      meta: `${getEntryLabel(filteredTodayMaintenance)} · Updated ${formatAbsoluteDate(filteredTodayMaintenance.updated_at)}`,
-                    })
-                  ) : (
-                    <Card className="p-5 text-sm text-slate-400">No maintenance report for today matches the current filters.</Card>
+          {/* Two-panel layout */}
+          <div className="flex min-h-[600px] overflow-hidden rounded-2xl border border-white/[0.06]">
+            {/* Sidebar */}
+            <div
+              className={`${
+                sidebarOpen ? "block" : "hidden"
+              } md:block w-full md:w-[280px] shrink-0 border-r border-white/[0.06] bg-slate-950/80`}
+            >
+              {/* Search */}
+              <div className="border-b border-white/[0.06] p-3">
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" />
+                  <Input
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Filter files…"
+                    className="h-8 bg-slate-900/60 pl-8 text-sm placeholder:text-slate-600 border-slate-700/50 focus:border-emerald-500/50"
+                  />
+                  {search && (
+                    <button
+                      type="button"
+                      onClick={() => setSearch("")}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
                   )}
                 </div>
-              </section>
+              </div>
 
-              <section className="space-y-4">
-                <SectionHeader
-                  eyebrow="Section 3"
-                  title="Recent Daily Entries"
-                  description="The last seven daily notes, excluding today, with quick previews and full markdown on demand."
-                />
-                {recentDailyEntries.length === 0 ? (
-                  <Card className="p-5 text-sm text-slate-400">No recent daily entries match the current filters.</Card>
+              {/* Tree */}
+              <div className="overflow-y-auto p-2" style={{ maxHeight: "calc(100vh - 420px)" }}>
+                {filteredTree.length === 0 ? (
+                  <p className="px-3 py-6 text-center text-sm text-slate-500">No files match your filter.</p>
                 ) : (
-                  <div className="space-y-4">
-                    {recentDailyEntries.map((doc) =>
-                      renderCollapsibleCard(doc, {
-                        title: getEntryLabel(doc),
-                        previewLength: 200,
-                        meta: `${doc.title || "Daily memory"} · Updated ${formatAbsoluteDate(doc.updated_at)}`,
-                      }),
-                    )}
-                  </div>
+                  filteredTree.map((rootNode) => (
+                    <TreeItem
+                      key={rootNode.path}
+                      node={rootNode}
+                      depth={0}
+                      selectedId={selectedDoc?.id ?? null}
+                      expandedPaths={expandedPaths}
+                      onSelect={handleSelect}
+                      onToggleExpand={toggleExpand}
+                    />
+                  ))
                 )}
-              </section>
-
-              <section className="space-y-4">
-                <SectionHeader
-                  eyebrow="Section 4"
-                  title="Meeting Notes"
-                  description="Fathom meeting summaries grouped separately for faster recall."
-                />
-                {filteredMeetings.length === 0 ? (
-                  <Card className="p-5 text-sm text-slate-400">No meeting notes match the current filters.</Card>
-                ) : (
-                  <div className="space-y-4">
-                    {filteredMeetings.map((doc) =>
-                      renderCollapsibleCard(doc, {
-                        title: getMeetingTitle(doc),
-                        previewLength: 220,
-                        meta: `${formatReadableDate(getDateFromPath(doc), "Meeting note")} · Updated ${formatAbsoluteDate(doc.updated_at)}`,
-                      }),
-                    )}
-                  </div>
-                )}
-              </section>
-
-              <section className="space-y-4">
-                <SectionHeader
-                  eyebrow="Section 5"
-                  title="Special Reports"
-                  description="Topic reviews and other non-daily memory artifacts that deserve their own lane."
-                />
-                {filteredSpecialReports.length === 0 ? (
-                  <Card className="p-5 text-sm text-slate-400">No special reports match the current filters.</Card>
-                ) : (
-                  <div className="space-y-4">
-                    {filteredSpecialReports.map((doc) =>
-                      renderCollapsibleCard(doc, {
-                        title: doc.title || getMeetingTitle(doc),
-                        previewLength: 220,
-                        meta: `${doc.file_path} · Updated ${formatAbsoluteDate(doc.updated_at)}`,
-                      }),
-                    )}
-                  </div>
-                )}
-              </section>
+              </div>
             </div>
-          )}
+
+            {/* Content viewer */}
+            <div className="flex-1 overflow-y-auto bg-slate-900/50 p-6 md:p-8" style={{ maxHeight: "calc(100vh - 300px)", minHeight: "600px" }}>
+              {selectedDoc ? (
+                <div className="mx-auto max-w-3xl space-y-6">
+                  {/* Breadcrumb */}
+                  <div className="flex flex-wrap items-center gap-1 text-xs text-slate-500">
+                    {breadcrumb.map((segment, i) => (
+                      <span key={`${segment}-${i}`} className="flex items-center gap-1">
+                        {i > 0 && <span className="text-slate-600">/</span>}
+                        <span className={i === breadcrumb.length - 1 ? "text-emerald-400" : ""}>{segment}</span>
+                      </span>
+                    ))}
+                  </div>
+
+                  {/* Title */}
+                  <h1 className="text-2xl font-bold text-white leading-tight">
+                    {selectedDoc.title || selectedDoc.file_path.split("/").pop()?.replace(/\.md$/i, "") || "Untitled"}
+                  </h1>
+
+                  {/* Metadata */}
+                  <div className="flex flex-wrap items-center gap-3">
+                    {selectedDoc.doc_type && (
+                      <Badge tone="default">{selectedDoc.doc_type}</Badge>
+                    )}
+                    {selectedDoc.category && (
+                      <Badge tone="success">{selectedDoc.category}</Badge>
+                    )}
+                    {selectedDoc.tags?.map((tag) => (
+                      <span
+                        key={tag}
+                        className="inline-block rounded-full bg-slate-800 px-2.5 py-0.5 text-xs text-slate-400"
+                      >
+                        {tag}
+                      </span>
+                    ))}
+                    <span className="text-xs text-slate-500">
+                      Updated {formatRelativeTime(selectedDoc.updated_at)}
+                    </span>
+                  </div>
+
+                  {/* Divider */}
+                  <div className="border-t border-white/[0.06]" />
+
+                  {/* Markdown content */}
+                  <div className="prose prose-invert max-w-none prose-headings:text-emerald-300 prose-h1:text-emerald-300 prose-h2:text-emerald-300 prose-h3:text-emerald-300 prose-p:text-slate-300 prose-strong:text-white prose-li:text-slate-300 prose-code:text-emerald-200 prose-code:bg-slate-800/60 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-pre:bg-slate-950 prose-pre:border prose-pre:border-white/[0.06] prose-a:text-emerald-400 prose-a:no-underline hover:prose-a:underline prose-blockquote:border-emerald-500/40 prose-blockquote:text-slate-400 prose-th:text-slate-300 prose-td:text-slate-400 prose-hr:border-white/[0.06]">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{selectedDoc.content}</ReactMarkdown>
+                  </div>
+                </div>
+              ) : (
+                /* Empty state */
+                <div className="flex h-full items-center justify-center">
+                  <div className="text-center space-y-3">
+                    <FileText className="mx-auto h-12 w-12 text-slate-600" />
+                    <h2 className="text-lg font-medium text-slate-400">Select a file from the sidebar</h2>
+                    <p className="text-sm text-slate-500">Browse the file tree to view document contents.</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
         </>
       )}
     </div>
