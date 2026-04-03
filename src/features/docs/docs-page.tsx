@@ -8,7 +8,7 @@ import { Select } from "@/shared/components/ui/select";
 import { Skeleton } from "@/shared/components/ui/skeleton";
 import { cn, formatAbsoluteDate, formatRelativeTime } from "@/shared/lib/utils";
 import type { ContentDeliverableRecord } from "@/shared/types/models";
-import { ChevronDown, ChevronRight, Search } from "lucide-react";
+import { Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -17,6 +17,15 @@ const CONTENT_TYPE_OPTIONS = ["all", "blog", "social", "newsletter", "email", "i
 const STATUS_OPTIONS = ["all", "draft", "review", "published", "archived"] as const;
 const AGENT_PRIORITY = ["sage", "pixel", "lucy"] as const;
 const DEFAULT_CAMPAIGN = "Unassigned";
+const DELIVERABLE_TABS = ["blog", "linkedin_personal", "linkedin_business", "facebook", "email"] as const;
+
+type DeliverableTabKey = (typeof DELIVERABLE_TABS)[number];
+
+interface CampaignGroup {
+  name: string;
+  items: ContentDeliverableRecord[];
+  latestUpdatedAt: string;
+}
 
 const CONTENT_TYPE_BADGE_STYLES: Record<string, string> = {
   blog: "border-sky-400/30 bg-sky-400/10 text-sky-200",
@@ -27,10 +36,13 @@ const CONTENT_TYPE_BADGE_STYLES: Record<string, string> = {
   campaign: "border-cyan-400/30 bg-cyan-400/10 text-cyan-200",
 };
 
-interface CampaignGroup {
-  name: string;
-  items: ContentDeliverableRecord[];
-}
+const TAB_LABELS: Record<DeliverableTabKey, string> = {
+  blog: "Blog",
+  linkedin_personal: "LinkedIn Personal",
+  linkedin_business: "LinkedIn Business",
+  facebook: "Facebook",
+  email: "Email",
+};
 
 function getContentTypeBadgeClass(type: string) {
   return CONTENT_TYPE_BADGE_STYLES[type] ?? "border-white/15 bg-white/8 text-slate-200";
@@ -69,23 +81,57 @@ function getCampaignGroups(items: ContentDeliverableRecord[]) {
   }
 
   return [...groups.entries()]
-    .map(([name, deliverables]) => ({
-      name,
-      items: [...deliverables].sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()),
-    }))
+    .map(([name, deliverables]) => {
+      const sortedItems = [...deliverables].sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
+
+      return {
+        name,
+        items: sortedItems,
+        latestUpdatedAt: sortedItems[0]?.updated_at ?? new Date(0).toISOString(),
+      } satisfies CampaignGroup;
+    })
     .sort((a, b) => {
       if (a.name === DEFAULT_CAMPAIGN) return 1;
       if (b.name === DEFAULT_CAMPAIGN) return -1;
-      return a.name.localeCompare(b.name);
+      return new Date(b.latestUpdatedAt).getTime() - new Date(a.latestUpdatedAt).getTime();
     });
 }
 
-function DeliverableListItem({
-  item,
+function getDeliverableTab(item: ContentDeliverableRecord): DeliverableTabKey | null {
+  if (item.content_type === "blog") return "blog";
+  if (item.content_type === "email" || item.content_type === "newsletter") return "email";
+
+  if (item.content_type === "social") {
+    const tags = item.tags ?? [];
+
+    if (tags.includes("linkedin_personal")) return "linkedin_personal";
+    if (tags.includes("linkedin_business")) return "linkedin_business";
+    if (tags.includes("facebook")) return "facebook";
+  }
+
+  return null;
+}
+
+function getCampaignTabMap(items: ContentDeliverableRecord[]) {
+  return items.reduce<Partial<Record<DeliverableTabKey, ContentDeliverableRecord>>>((accumulator, item) => {
+    const tab = getDeliverableTab(item);
+    if (!tab || accumulator[tab]) return accumulator;
+    accumulator[tab] = item;
+    return accumulator;
+  }, {});
+}
+
+function getDefaultTab(tabMap: Partial<Record<DeliverableTabKey, ContentDeliverableRecord>>) {
+  if (tabMap.blog) return "blog" satisfies DeliverableTabKey;
+  return DELIVERABLE_TABS.find((tab) => tabMap[tab]) ?? null;
+}
+
+function CampaignListItem({
+  campaign,
   isSelected,
   onSelect,
 }: {
-  item: ContentDeliverableRecord;
+  campaign: CampaignGroup;
   isSelected: boolean;
   onSelect: () => void;
 }) {
@@ -93,51 +139,79 @@ function DeliverableListItem({
     <button className="w-full text-left" onClick={onSelect}>
       <div
         className={cn(
-          "rounded-2xl border p-4 transition",
-          isSelected ? "border-white/20 bg-white/10" : "border-white/8 bg-white/[0.03] hover:border-white/14 hover:bg-white/[0.05]",
+          "rounded-2xl border px-4 py-3 transition",
+          isSelected
+            ? "border-white/20 bg-white/10"
+            : "border-white/8 bg-white/[0.03] hover:border-white/14 hover:bg-white/[0.05]",
         )}
       >
-        <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center justify-between gap-3">
           <div className="min-w-0 flex-1">
-            <p className="truncate font-medium text-white">{item.title}</p>
-            {item.campaign_title ? <p className="mt-1 truncate text-xs text-slate-400">{item.campaign_title}</p> : null}
+            <p className="truncate font-medium text-white">{campaign.name}</p>
+            <p className="mt-1 text-xs text-slate-500">Updated {formatRelativeTime(campaign.latestUpdatedAt)}</p>
           </div>
-          <Badge className={cn("shrink-0 border", getContentTypeBadgeClass(item.content_type))}>{item.content_type}</Badge>
-        </div>
 
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <Badge className="border-white/10 bg-white/6 text-slate-200">{item.agent_id}</Badge>
-          <Badge className="border-white/10 bg-white/6 capitalize text-slate-300">{item.status}</Badge>
+          <Badge className="shrink-0 border-white/10 bg-white/6 text-slate-300">
+            {campaign.items.length} piece{campaign.items.length === 1 ? "" : "s"}
+          </Badge>
         </div>
-
-        <p className="mt-3 text-xs uppercase tracking-[0.22em] text-slate-500">{formatRelativeTime(item.updated_at)}</p>
       </div>
     </button>
   );
 }
 
-function DeliverableViewer({ item }: { item: ContentDeliverableRecord | undefined }) {
-  if (!item) {
-    return <div className="flex h-full min-h-[420px] items-center justify-center text-slate-500">No content matches the current filters.</div>;
+function DeliverableViewer({
+  campaign,
+  activeTab,
+  onTabChange,
+}: {
+  campaign: CampaignGroup | undefined;
+  activeTab: DeliverableTabKey | null;
+  onTabChange: (tab: DeliverableTabKey) => void;
+}) {
+  if (!campaign) {
+    return <div className="flex h-full min-h-[420px] items-center justify-center text-slate-500">No campaigns match the current filters.</div>;
+  }
+
+  const tabMap = getCampaignTabMap(campaign.items);
+  const availableTabs = DELIVERABLE_TABS.filter((tab) => tabMap[tab]);
+  const selectedTab = activeTab && tabMap[activeTab] ? activeTab : getDefaultTab(tabMap);
+  const item = selectedTab ? tabMap[selectedTab] : undefined;
+
+  if (!item || !selectedTab) {
+    return <div className="flex h-full min-h-[420px] items-center justify-center text-slate-500">This campaign has no deliverables for the current filters.</div>;
   }
 
   return (
     <div className="space-y-6">
       <div className="border-b border-white/8 pb-5">
         <div className="flex flex-wrap items-center gap-2">
-          <Badge className={cn("border", getContentTypeBadgeClass(item.content_type))}>{item.content_type}</Badge>
-          <Badge className="border-white/10 bg-white/6 text-slate-200">{item.agent_id}</Badge>
-          <Badge className="border-white/10 bg-white/6 capitalize text-slate-300">{item.status}</Badge>
-          {item.campaign_title ? <Badge className="border-white/10 bg-white/6 text-slate-300">{item.campaign_title}</Badge> : null}
+          <Badge className={cn("border", getContentTypeBadgeClass("campaign"))}>{campaign.name}</Badge>
+          <Badge className="border-white/10 bg-white/6 text-slate-300">{campaign.items.length} piece{campaign.items.length === 1 ? "" : "s"}</Badge>
         </div>
 
-        <h2 className="mt-4 text-3xl font-semibold text-white">{item.title}</h2>
-        <p className="mt-2 text-sm text-slate-400">Updated {formatRelativeTime(item.updated_at)}</p>
+        <h2 className="mt-4 text-3xl font-semibold text-white">{campaign.name}</h2>
+        <p className="mt-2 text-sm text-slate-400">Updated {formatRelativeTime(campaign.latestUpdatedAt)}</p>
+
+        <div className="mt-6 flex flex-wrap gap-6 border-b border-white/8">
+          {availableTabs.map((tab) => (
+            <button
+              key={tab}
+              className={cn(
+                "-mb-px border-b-2 pb-3 text-sm font-medium transition",
+                selectedTab === tab ? "border-sky-400 text-white" : "border-transparent text-slate-500 hover:text-slate-300",
+              )}
+              onClick={() => onTabChange(tab)}
+            >
+              {TAB_LABELS[tab]}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_280px]">
         <div className="space-y-5">
-          {item.content_type === "image" && item.image_url ? (
+          {item.image_url ? (
             <div className="overflow-hidden rounded-3xl border border-white/10 bg-black/20">
               <img src={item.image_url} alt={item.title} className="h-auto w-full object-cover" />
             </div>
@@ -155,6 +229,14 @@ function DeliverableViewer({ item }: { item: ContentDeliverableRecord | undefine
 
           <dl className="space-y-4 text-sm text-slate-300">
             <div>
+              <dt className="text-xs uppercase tracking-[0.2em] text-slate-500">Deliverable</dt>
+              <dd className="mt-1 text-white">{item.title}</dd>
+            </div>
+            <div>
+              <dt className="text-xs uppercase tracking-[0.2em] text-slate-500">Tab</dt>
+              <dd className="mt-1 text-white">{TAB_LABELS[selectedTab]}</dd>
+            </div>
+            <div>
               <dt className="text-xs uppercase tracking-[0.2em] text-slate-500">Content type</dt>
               <dd className="mt-1 capitalize text-white">{item.content_type}</dd>
             </div>
@@ -167,10 +249,6 @@ function DeliverableViewer({ item }: { item: ContentDeliverableRecord | undefine
               <dd className="mt-1 capitalize text-white">{item.status}</dd>
             </div>
             <div>
-              <dt className="text-xs uppercase tracking-[0.2em] text-slate-500">Campaign</dt>
-              <dd className="mt-1 text-white">{item.campaign_title || "—"}</dd>
-            </div>
-            <div>
               <dt className="text-xs uppercase tracking-[0.2em] text-slate-500">Created</dt>
               <dd className="mt-1 text-white">{formatAbsoluteDate(item.created_at)}</dd>
             </div>
@@ -181,7 +259,15 @@ function DeliverableViewer({ item }: { item: ContentDeliverableRecord | undefine
             <div>
               <dt className="text-xs uppercase tracking-[0.2em] text-slate-500">Tags</dt>
               <dd className="mt-2 flex flex-wrap gap-2">
-                {item.tags?.length ? item.tags.map((tag) => <Badge key={tag} className="border-white/10 bg-white/6 text-slate-300">{tag}</Badge>) : <span className="text-slate-500">No tags</span>}
+                {item.tags?.length ? (
+                  item.tags.map((tag) => (
+                    <Badge key={tag} className="border-white/10 bg-white/6 text-slate-300">
+                      {tag}
+                    </Badge>
+                  ))
+                ) : (
+                  <span className="text-slate-500">No tags</span>
+                )}
               </dd>
             </div>
             {item.image_url ? (
@@ -203,10 +289,10 @@ export function DocsPage() {
   const [contentType, setContentType] = useState<(typeof CONTENT_TYPE_OPTIONS)[number]>("all");
   const [status, setStatus] = useState<(typeof STATUS_OPTIONS)[number]>("all");
   const [agent, setAgent] = useState("all");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [collapsedCampaigns, setCollapsedCampaigns] = useState<Record<string, boolean>>({});
+  const [selectedCampaign, setSelectedCampaign] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<DeliverableTabKey | null>(null);
 
-  const deliverables = deliverablesQuery.data ?? [];
+  const deliverables = useMemo(() => deliverablesQuery.data ?? [], [deliverablesQuery.data]);
 
   const sortedDeliverables = useMemo(
     () => [...deliverables].sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()),
@@ -236,27 +322,31 @@ export function DocsPage() {
   const agentOptions = useMemo(() => getAgentOptions(sortedDeliverables), [sortedDeliverables]);
 
   useEffect(() => {
-    if (!selectedId && filteredDeliverables[0]) {
-      setSelectedId(filteredDeliverables[0].id);
+    if (!selectedCampaign && campaignGroups[0]) {
+      setSelectedCampaign(campaignGroups[0].name);
       return;
     }
 
-    if (selectedId && !filteredDeliverables.some((item) => item.id === selectedId)) {
-      setSelectedId(filteredDeliverables[0]?.id ?? null);
+    if (selectedCampaign && !campaignGroups.some((campaign) => campaign.name === selectedCampaign)) {
+      setSelectedCampaign(campaignGroups[0]?.name ?? null);
     }
-  }, [filteredDeliverables, selectedId]);
+  }, [campaignGroups, selectedCampaign]);
+
+  const selected = campaignGroups.find((campaign) => campaign.name === selectedCampaign) ?? campaignGroups[0];
+  const selectedTabMap = useMemo(() => getCampaignTabMap(selected?.items ?? []), [selected]);
 
   useEffect(() => {
-    setCollapsedCampaigns((current) => {
-      const next = { ...current };
-      for (const group of getCampaignGroups(sortedDeliverables)) {
-        if (!(group.name in next)) next[group.name] = false;
-      }
-      return next;
-    });
-  }, [sortedDeliverables]);
+    const defaultTab = getDefaultTab(selectedTabMap);
 
-  const selected = filteredDeliverables.find((item) => item.id === selectedId) ?? filteredDeliverables[0];
+    if (!defaultTab) {
+      setActiveTab(null);
+      return;
+    }
+
+    if (!activeTab || !selectedTabMap[activeTab]) {
+      setActiveTab(defaultTab);
+    }
+  }, [activeTab, selectedTabMap, selectedCampaign]);
 
   if (deliverablesQuery.isError) {
     return <ErrorState title="Content library unavailable" description="Content deliverables could not be loaded." />;
@@ -307,38 +397,18 @@ export function DocsPage() {
 
           <div className="mt-5 space-y-4">
             {deliverablesQuery.isLoading
-              ? Array.from({ length: 5 }).map((_, index) => <Skeleton key={index} className="h-28 rounded-2xl" />)
-              : campaignGroups.map((group: CampaignGroup) => {
-                const isCollapsed = collapsedCampaigns[group.name] ?? false;
-
-                return (
-                  <div key={group.name} className="rounded-2xl border border-white/8 bg-white/[0.02]">
-                    <button
-                      className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
-                      onClick={() => setCollapsedCampaigns((current) => ({ ...current, [group.name]: !isCollapsed }))}
-                    >
-                      <div>
-                        <p className="text-sm font-medium text-white">{group.name}</p>
-                        <p className="text-xs uppercase tracking-[0.2em] text-slate-500">{group.items.length} item{group.items.length === 1 ? "" : "s"}</p>
-                      </div>
-                      {isCollapsed ? <ChevronRight className="size-4 text-slate-400" /> : <ChevronDown className="size-4 text-slate-400" />}
-                    </button>
-
-                    {!isCollapsed ? (
-                      <div className="space-y-3 border-t border-white/8 px-3 py-3">
-                        {group.items.map((item) => (
-                          <DeliverableListItem
-                            key={item.id}
-                            item={item}
-                            isSelected={selected?.id === item.id}
-                            onSelect={() => setSelectedId(item.id)}
-                          />
-                        ))}
-                      </div>
-                    ) : null}
-                  </div>
-                );
-              })}
+              ? Array.from({ length: 5 }).map((_, index) => <Skeleton key={index} className="h-20 rounded-2xl" />)
+              : campaignGroups.map((campaign) => (
+                  <CampaignListItem
+                    key={campaign.name}
+                    campaign={campaign}
+                    isSelected={selected?.name === campaign.name}
+                    onSelect={() => {
+                      setSelectedCampaign(campaign.name);
+                      setActiveTab(getDefaultTab(getCampaignTabMap(campaign.items)));
+                    }}
+                  />
+                ))}
 
             {!deliverablesQuery.isLoading && campaignGroups.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-white/10 px-5 py-10 text-center text-sm text-slate-500">
@@ -349,7 +419,7 @@ export function DocsPage() {
         </Card>
 
         <Card className="p-6">
-          <DeliverableViewer item={selected} />
+          <DeliverableViewer campaign={selected} activeTab={activeTab} onTabChange={setActiveTab} />
         </Card>
       </div>
     </div>
